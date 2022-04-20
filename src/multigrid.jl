@@ -2,41 +2,6 @@
   Solving the Poisson equation with multigrid.
 =#
 
-@generated function residual!(r::ScalarBlockField{D, M, G},
-                              u::ScalarBlockField{D, M, G},
-                              b::ScalarBlockField{D, M, G}, s, blkpos, blk,
-                              stencil_type::ST,
-                              geometry_type::GT) where {D, M, G, ST, GT}
-
-    # Expands to something like :(ublk[i_1, i_2]); ublk and bblk are defined
-    # inside the generated function
-    uref = macroexpand(@__MODULE__, :(@nref $D ublk i))
-    bref = macroexpand(@__MODULE__, :(@nref $D bblk i))
-
-    st = ST()
-    gt = GT()
-
-    # Global coordinates.
-    glcoords = macroexpand(@__MODULE__, :(@ntuple $D j))
-    
-    # Expands to the application of the stencil around e.g. u[i_1, i_2]
-    lhs = stencilexpr(lstencil(st), uref, glcoords.args, gt)
-    rhs = stencilexpr(rstencil(st), bref, glcoords.args, gt)
-
-    quote
-        rblk = getblk(r, blk)
-        ublk = getblk(u, blk)
-        bblk = getblk(b, blk)
-
-        gbl0 = global_first(blkpos, $M)
-        
-        @nloops $D i d->validrange(r) begin
-            @nexprs $D d->(j_d = i_d - gbl0[d] - $G)
-            (@nref $D rblk i) = -(($rhs) + ($lhs) / s)
-        end
-    end
-end
-
 
 """
     Compute the residual of applying the laplace operator to a potential
