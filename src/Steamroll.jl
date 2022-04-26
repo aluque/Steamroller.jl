@@ -7,7 +7,7 @@ using DataStructures
 using LoopVectorization
 using Polyester
 
-const BlockIndex = UInt16
+const BlockIndex = Int16
 
 @template DEFAULT =
     """

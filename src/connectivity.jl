@@ -6,6 +6,7 @@ Handling of connectivity: the spatial relationships between blocks and between b
 struct Boundary{D}
     block::BlockIndex
     face::CartesianIndex{D}
+    bnd::CartesianIndex{D}
 end
 
 # The block from and to share a face at the same level
@@ -62,10 +63,10 @@ struct Connectivity{D}
 end
 
 function Connectivity{D}(levels) where {D}
-    Connectivity(fill(Boundary{D}[], levels),
-                 fill(Neighbor{D}[], levels),
-                 fill(RefBoundary{D}[], levels),
-                 fill(Child{D}[], levels))
+    Connectivity(map(l -> Boundary{D}[], 1:levels),
+                 map(l -> Neighbor{D}[], 1:levels),
+                 map(l -> RefBoundary{D}[], 1:levels),
+                 map(l -> Child{D}[], 1:levels))
 end
 
 __connections(c::Connectivity, ::Type{Boundary{D}}, level) where {D} = c.boundary[level]
@@ -88,26 +89,29 @@ function connectivity(tree::Tree{D}, stencil) where {D}
     
     for layer in tree
         for (c, blk) in layer
-            for d in stencil
-                if !((c + d) in layer.domain)
+            for s in stencil
+                if !((c + s) in layer.domain)
+                    # For box stencils we must find the proper boundary
+                    bnd = CartesianIndex(ntuple(d -> (c[d] + s[d]) in layer.domain.indices[d] ?
+                                                0 : s[d], Val(D)))
                     # Block at the domain boundary
-                    push!(conn, layer.level, Boundary(blk, d))
+                    push!(conn, layer.level, Boundary(blk, s, bnd))
                     continue
                 end
 
-                other = get(layer, c + d)
+                other = get(layer, c + s)
                 if other != 0
                     # A neighbor exists
-                    push!(conn, layer.level, Neighbor(blk, other, d))
+                    push!(conn, layer.level, Neighbor(blk, other, s))
                 elseif layer.level > 1
                     # A refinement boundary
-                    pc = parentcoord(c + d)
+                    pc = parentcoord(c + s)
                     pblk = get(tree[layer.level - 1], pc)
 
                     @assert pblk != 0 "Proper nesting broken" 
 
                     push!(conn, layer.level,
-                          RefBoundary(blk, pblk, d, subcoord(c + d)))
+                          RefBoundary(blk, pblk, s, subcoord(c + s)))
                 end
             end
 
@@ -131,7 +135,7 @@ end
     Fill ghost cells by copying neighboring cells in the same layer.
     `v` contains a vector with `Neighbor` relations.
 """
-function fill_ghosts_copy!(u::ScalarBlockField{D}, v::Vector{Neighbor{D}}) where {D}
+function fill_ghost_copy!(u::ScalarBlockField{D}, v::Vector{Neighbor{D}}) where {D}
     @batch for edge in v
         overlap = overlapindices(u, edge.face)
         ghost = ghostindices(u, -edge.face)
@@ -150,10 +154,10 @@ end
     Copy ghost cells from neighbouring blocks according to a full connectivity
     structure `conn`.
 """
-function fill_ghosts_copy!(u::ScalarBlockField, conn::Connectivity)
+function fill_ghost_copy!(u::ScalarBlockField, conn::Connectivity)
     # For each layer...
     for v in conn.neighbor
-        fill_ghosts_copy!(u, v)
+        fill_ghost_copy!(u, v)
     end
 end
 
@@ -162,19 +166,19 @@ end
     Fill ghost cells in the boundary of a given layer by applying the 
     boundary conditions specified by `bc`
 """
-function fill_ghosts_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}}, bc) where {D}
-    @batch for bnd in v
-        overlap = overlapindices(u, bnd.face)
-        ghost = ghostindices(u, bnd.face)
-
-        ublk = getblk(u, bnd.block)
-        CI = CartesianIndices(overlap)
+function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}}, bc) where {D}
+    @batch for link in v
+        ghost = ghostindices(u, link.face)
+        valid = mirrorghost(u, ghost, link.bnd)
+        
+        ublk = getblk(u, link.block)
+        CI = CartesianIndices(ghost)
         # This is wrong for corners not in the domain corners.
-        s = getbc(bc, bnd.face)
+        s = getbc(bc, link.bnd)
         
         for I in CI
-            I1 = __mirrorindex(I, CI, bnd.face)
-            ublk[ghost[I]] = s * ublk[overlap[I1]]
+            # I1 = __mirrorindex(I, CI, link.bnd)
+            ublk[ghost[I]] = s * ublk[valid[I]]
         end
     end
 end
@@ -185,16 +189,16 @@ end
     `bc`.
     structure `conn`.
 """
-function fill_ghosts_bnd!(u::ScalarBlockField, conn::Connectivity, bc)
+function fill_ghost_bnd!(u::ScalarBlockField, conn::Connectivity, bc)
     # For each layer...
     for v in conn.boundary
-        fill_ghosts_bnd!(u, v, bc)
+        fill_ghost_bnd!(u, v, bc)
     end
 end
 
 
 @inline function __mirrorindex(I::CartesianIndex{D}, CI::CartesianIndices{D},
-                        face::CartesianIndex{D}) where {D}
-    CartesianIndex(ntuple(d -> (face[d] == 0 ? I[d] :
+                        bnd::CartesianIndex{D}) where {D}
+    CartesianIndex(ntuple(d -> (bnd[d] == 0 ? I[d] :
                                 (last(CI.indices[d]) - I[d] + 1)), Val(D)))
 end

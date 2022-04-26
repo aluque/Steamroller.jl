@@ -70,8 +70,8 @@ end
 """
 function interp_blocks!(u::ScalarBlockField{D}, conn::Connectivity, bc) where {D}
     for i in 2:length(conn.child)
-        fill_ghosts_copy!(u, conn.neighbor[i - 1])
-        fill_ghosts_bnd!(u, conn.boundary[i - 1], bc)
+        fill_ghost_copy!(u, conn.neighbor[i - 1])
+        fill_ghost_bnd!(u, conn.boundary[i - 1], bc)
         interp_blocks!(u, conn.child[i])
     end
 end

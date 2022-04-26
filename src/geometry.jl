@@ -18,13 +18,18 @@ factorexpr(::CartesianGeometry, c, d) = 1
 # For performance we store the cylindrical dimension in a type parameters
 struct CylindricalGeometry{D} <: AbstractGeometry end
 
-@inline function factor(::CylindricalGeometry{D}, c, d::CartesianIndex) where D
-     1 + d[D] / (2 * c[D] - 1)
+
+"""
+    Compute `r[i + 2δ]/r[i]` around coordinates given by `c`. r[i] is a cell 
+    center; r[i + 1/2] is the cell edge.
+"""
+@inline function factor(::CylindricalGeometry{D}, c, δ) where D
+     abs(1 + δ[D] / (2 * c[D] - 1))
 end
 
-@inline function factor(::CylindricalGeometry{D}, c, d::Int) where D
-     1 + d / (2 * c[D] - 1)
-end
+# @inline function factor(::CylindricalGeometry{D}, c, d::Int) where D
+#      1 + d / (2 * c[D] - 1)
+# end
 
 function factorexpr(::CylindricalGeometry{D}, c, d) where D
     :(1.0 + $(d[D]) / (2 * $(c[D]) - 1))

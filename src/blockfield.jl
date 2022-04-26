@@ -184,6 +184,7 @@ ghostrange(f::ScalarBlockField, k) = ghostfirst(f, k):ghostlast(f, k)
 validfirst(::ScalarBlockField{D, M, G}) where {D, M, G} = G + 1
 validlast(::ScalarBlockField{D, M, G}) where {D, M, G} = G + M
 validrange(f::ScalarBlockField) = validfirst(f):validlast(f)
+validrange2(f::ScalarBlockField) = validfirst(f):2:validlast(f)
 
 # For region that overlap with ghost neighbors
 overlapfirst(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? (G + 1) : (M + 1)
@@ -207,4 +208,39 @@ function overlapindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {
     
     CartesianIndices(ntuple(dim -> (face[dim] == 0 ? validrange(f) :
                                     overlaprange(f, face[dim])), Val(D)))
+end
+
+
+"""
+    Computes the "mirror" index of `i` mapping non-ghost to ghost (and viceversa).
+    `dir` must be -1 (lowest boundary) or +1 (highest boundary).
+"""
+function mirrorghost(f::ScalarBlockField{D, M, G}, i::Int, dir) where {D, M, G}
+    if dir == -1
+        return 2G - i + 1
+    elseif dir == 1
+        return 2 * (G + M) - i + 1
+    end
+
+    return i
+end
+
+
+"""
+    Computes the "mirror" index of a range possibly mapping non-ghost to ghost 
+    (and viceversa). `dir` must be -1 (lowest boundary) or +1 (highest boundary)
+    or 0 (no change).
+"""
+function mirrorghost(f::ScalarBlockField, r::AbstractRange, dir) 
+    r, rev = promote(r, reverse(mirrorghost(f, last(r), dir):mirrorghost(f, first(r), dir)))
+    return (dir == 0 ? r : rev)
+end
+
+
+"""
+    Computes the "mirror" indices of CartesianIndices.
+"""
+function mirrorghost(f::ScalarBlockField{D}, ci::CartesianIndices{D},
+                     dir::CartesianIndex{D}) where {D}
+    CartesianIndices(ntuple(d->mirrorghost(f, ci.indices[d], dir[d]), Val(D)))
 end

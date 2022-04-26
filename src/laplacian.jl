@@ -17,132 +17,128 @@
 """
 struct LaplacianDiscretization{D,P}; end
 
-stencil(::LaplacianDiscretization{2, 2}, ::Val{:lhs}) = [0  1  0;
-                                                         1 -4  1;
-                                                         0  1  0]
+stencil(::LaplacianDiscretization{2, 2}, ::Val{:lhs}, geom) = @SArray [0  1  0;
+                                                                       1 -4  1;
+                                                                       0  1  0]
 
-stencil(::LaplacianDiscretization{3, 2}, ::Val{:lhs}) = [[0   0   0;
-                                                          0   1   0;
-                                                          0   0   0];;;
-                                                         
-                                                         [0   1   0;
-                                                          1  -6   1;
-                                                          0   1   0];;;
-                                                         
-                                                         [0   0   0;
-                                                          0   1   0;
-                                                          0   0   0]]
+denom(::LaplacianDiscretization{2, 2}, ::Val{:lhs}, geom) = 1
 
-# Thses discretizations do not include any RHS stencil
-stencil(::LaplacianDiscretization{2, 2}, ::Val{:rhs}) = [0  0  0;
-                                                         0  1  0;
-                                                         0  0  0]
+stencil(::LaplacianDiscretization{3, 2}, ::Val{:lhs}, geom) = @SArray [[0   0   0;
+                                                                        0   1   0;
+                                                                        0   0   0];;;
+                                                                       
+                                                                       [0   1   0;
+                                                                        1  -6   1;
+                                                                        0   1   0];;;
+                                                                       
+                                                                       [0   0   0;
+                                                                        0   1   0;
+                                                                        0   0   0]]
 
-stencil(::LaplacianDiscretization{3, 2}, ::Val{:rhs}) = [[0   0   0;
-                                                          0   0   0;
-                                                          0   0   0];;;
-                                                         
-                                                         [0   0   0;
-                                                          0   1   0;
-                                                          0   0   0];;;
-                                                         
-                                                         [0   0   0;
-                                                          0   0   0;
-                                                          0   0   0]]
+denom(::LaplacianDiscretization{3, 2}, ::Val{:lhs}, geom) = 1
 
+# Thsese discretizations have a trivial RHS stencil
+stencil(::LaplacianDiscretization{2, 2}, ::Val{:rhs}, geom) = @SArray [0  0  0;
+                                                                       0  1  0;
+                                                                       0  0  0]
+denom(::LaplacianDiscretization{2, 2}, ::Val{:rhs}, geom) = 1
+
+stencil(::LaplacianDiscretization{3, 2}, ::Val{:rhs}, geom) = @SArray [[0   0   0;
+                                                                        0   0   0;
+                                                                        0   0   0];;;
+                                                                       
+                                                                       [0   0   0;
+                                                                        0   1   0;
+                                                                        0   0   0];;;
+                                                                       
+                                                                       [0   0   0;
+                                                                        0   0   0;
+                                                                        0   0   0]]
+denom(::LaplacianDiscretization{3, 2}, ::Val{:rhs}, geom) = 1
 
 
 # The 4th-order Mehrstellen stencil.
 # See e.g. Trottenberg, Oosterlee and Schuler, 5.4.2
 ###################################################
 
-stencil(::LaplacianDiscretization{2, 4}, ::Val{:lhs}) = [1    4  1;
-                                                         4  -20  4;
-                                                         1    4  1]
+stencil(::LaplacianDiscretization{2, 4}, ::Val{:lhs}, ::CartesianGeometry) = @SArray [1    4  1;
+                                                                                      4  -20  4;
+                                                                                      1    4  1]
+denom(::LaplacianDiscretization{2, 4}, ::Val{:lhs}, ::CartesianGeometry) = 6
 
-stencil(::LaplacianDiscretization{3, 4}, ::Val{:lhs}) = [[0   1   0;
-                                                          1   2   1;
-                                                          0   1   0];;;
-                                                         
-                                                         [1    2   1;
-                                                          2   -24  2;
-                                                          1    2   1];;;
-                                                         
-                                                         [0   1   0;
-                                                          1   2   1;
-                                                          0   1   0]]
+stencil(::LaplacianDiscretization{2, 4}, ::Val{:lhs}, ::CylindricalGeometry) = @SArray [1    4  1;
+                                                                                        4  -20  4;
+                                                                                        1    4  1]
+denom(::LaplacianDiscretization{2, 4}, ::Val{:lhs}, ::CylindricalGeometry) = 6
 
-stencil(::LaplacianDiscretization{2, 4}, ::Val{:rhs}) = [0   1  0;
-                                                         1   8  1;
-                                                         0   1  0]
 
-stencil(::LaplacianDiscretization{3, 4}, ::Val{:rhs}) = [[0   0   0;
-                                                          0   1   0;
-                                                          0   0   0];;;
-                                                         
-                                                         [0    1   0;
-                                                          1    6   1;
-                                                          0    1   0];;;
-                                                         
-                                                         [0   0   0;
-                                                          0   1   0;
-                                                          0   0   0]]
+stencil(::LaplacianDiscretization{3, 4}, ::Val{:lhs}, ::CartesianGeometry) = @SArray [[0   1   0;
+                                                                                       1   2   1;
+                                                                                       0   1   0];;;
+                                                                                      
+                                                                                      [1    2   1;
+                                                                                       2   -24  2;
+                                                                                       1    2   1];;;
+                                                                                      
+                                                                                      [0   1   0;
+                                                                                       1   2   1;
+                                                                                       0   1   0]]
+denom(::LaplacianDiscretization{3, 4}, ::Val{:lhs}, ::CartesianGeometry) = 6
 
-@inline function center_factor(ld::LaplacianDiscretization{D}, side) where {D}
-    stencil(ld, side)[2 * oneunit(CartesianIndex{D})]
+stencil(::LaplacianDiscretization{2, 4}, ::Val{:rhs}, ::CartesianGeometry) = @SArray [0   1  0;
+                                                                                      1   8  1;
+                                                                                      0   1  0]
+denom(::LaplacianDiscretization{2, 4}, ::Val{:rhs}, ::CartesianGeometry) = 12
+
+stencil(::LaplacianDiscretization{2, 4}, ::Val{:rhs}, ::CylindricalGeometry) = @SArray [0   1  0;
+                                                                                        1  14  1;
+                                                                                        0   1  0]
+denom(::LaplacianDiscretization{2, 4}, ::Val{:rhs}, ::CylindricalGeometry) = 18
+
+stencil(::LaplacianDiscretization{3, 4}, ::Val{:rhs}, ::CartesianGeometry) = @SArray [[0   0   0;
+                                                                                       0   1   0;
+                                                                                       0   0   0];;;
+                                                                                      
+                                                                                      [0    1   0;
+                                                                                       1    6   1;
+                                                                                       0    1   0];;;
+                                                                                      
+                                                                                      [0   0   0;
+                                                                                       0   1   0;
+                                                                                       0   0   0]]
+
+denom(::LaplacianDiscretization{3, 4}, ::Val{:rhs}, ::CartesianGeometry) = 12
+
+@inline function center_factor(ld::LaplacianDiscretization{D}, side, geom) where {D}
+    stencil(ld, side, geom)[2 * oneunit(CartesianIndex{D})]
 end
 
+_gridstep(::Val{:lhs}) = 1
+_gridstep(::Val{:rhs}) = 2
 
-"""
-    Receives a `stencil` as an array and a ref expression `refexpr` 
-    (e.g. `:(A[i, j])`) and produces an expression evaluating the stencil 
-    around `A[i, j]`.  geomsym is a symbol to call the geometry factor.
-"""
-function stencilexpr(stencil::AbstractArray, refexpr::Expr,
-                     globalcoords, geom::AbstractGeometry)
-    @assert refexpr.head == :ref
-
-    arr = refexpr.args[1]
-    z = refexpr.args[2:end]
     
-    exprs = Expr[]
-    D = length(z)
-    
-    for I in CartesianIndices(stencil)
-        f = stencil[I]
-        f != 0 || continue
-
-        gf = factorexpr(geom, globalcoords, I - 2 * oneunit(I))
-        
-        inds = ntuple(d -> :($(I[d] - 2) + $(z[d])), D)
-        ref = Expr(:ref, arr, inds...)
-        
-        push!(exprs, :($f * $gf * $ref))
-    end
-    
-    Expr(:call, :+, exprs...)
-end
-
-
 @generated function applystencil(u, I::CartesianIndex{D}, J::CartesianIndex{D},
-                      geom, ::LaplacianDiscretization{D, P},
-                      ::Val{side}) where {D, P, side}
+                      geom::G, ::LaplacianDiscretization{D, P},
+                      ::Val{side}) where {D, P, G, side}
     ld = LaplacianDiscretization{D, P}()
-    cf = center_factor(ld, Val(side))
-    
+    g = G()
+    cf = center_factor(ld, Val(side), g)
+    k = denom(ld, Val(side), g)
+
     expr = quote
         $(Expr(:meta, :inline))
         # Start with center value
         v = $cf * u[I]
     end
 
-    starray = stencil(ld, Val(side))
+    gstep = _gridstep(Val(side))
+    starray = stencil(ld, Val(side), g)
     
     for S in CartesianIndices(starray)
         f = starray[S]
         f != 0 || continue
 
-        shift = ntuple(d -> S[d] - 2, Val(D))
+        shift = ntuple(d -> gstep * (S[d] - 2), Val(D))
 
         # The center value has already been included
         all(==(0), shift) && continue
@@ -154,9 +150,10 @@ end
                       :(I1 = Base.setindex(I1, I1[$d] + $(shift[d]), $d)))
             end
         end
-        push!(expr.args, :(v = muladd($f * factor(geom, J, $shift),  u[I1], v)))
+        #push!(expr.args, :(@show J factor(geom, J, $shift)))
+        push!(expr.args, :(v += $f * factor(geom, J, $shift) * u[I1]))
     end
-    push!(expr.args, :(return v))
+    push!(expr.args, :(return v / $k))
 
     return expr
 end
