@@ -197,6 +197,31 @@ function fill_ghost_bnd!(u::ScalarBlockField, conn::Connectivity, bc)
 end
 
 
+"""
+    Fill ghost cells by interpolating from parent blocks at refinement 
+    boundaries.
+"""
+function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
+    @batch for edge in v
+        src = getblk(u, edge.coarse)
+        dest = getblk(u, edge.fine)
+        interp!(dest, ghostindices(u, edge.face),
+                src, subblockbnd(u, edge.subblock, -edge.face))
+    end
+end
+
+"""
+    Fill ghost cells by interpolating from parent blocks at all refinement 
+    boundaries.
+"""
+function fill_ghost_interp!(u::ScalarBlockField{D}, conn::Connectivity) where {D}
+    # For each layer...
+    for v in conn.refboundary
+        fill_ghost_interp!(u, v)
+    end
+end
+
+
 @inline function __mirrorindex(I::CartesianIndex{D}, CI::CartesianIndices{D},
                         bnd::CartesianIndex{D}) where {D}
     CartesianIndex(ntuple(d -> (bnd[d] == 0 ? I[d] :

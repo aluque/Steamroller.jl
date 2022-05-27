@@ -154,8 +154,32 @@ function validindices(f::ScalarBlockField{D, M, G}) where {D, M, G}
 end
 
 function subblockindices(f::ScalarBlockField{D, M, G}, sb::CartesianIndex) where {D, M, G}
-    mhalf = div(M, 2)
+    mhalf, r = divrem(M, 2)
+    r == 0 || error("M must be divisible by 2")
+    
     CartesianIndices(ntuple(d -> (G + 1 + (sb[d] - 1) * mhalf):(G + sb[d] * mhalf), Val(D)))
+end
+
+
+""" Indices of cells in the parent block for a refinement boundary. """
+function subblockbnd(f::ScalarBlockField{D, M, G},
+                     sb::CartesianIndex{D}, face::CartesianIndex{D}) where {D, M, G}
+    sbinds = subblockindices(f, sb)
+    ghalf, r = divrem(G, 2)
+    r == 0 || error("G must be divisible by 2")
+    
+    function inrange(d)
+        if face[d] == -1
+            return sbinds.indices[d][1:ghalf]
+        elseif face[d] == 1
+            return sbinds.indices[d][(size(sbinds, d) - ghalf + 1):size(sbinds, d)]
+        end
+
+        @assert face[d] == 0 "Badly formed face indication"
+        return sbinds.indices[d][axes(sbinds, d)]
+    end
+    
+    CartesianIndices(ntuple(d->inrange(d), Val(D)))
 end
 
 # Handling of block boundaries
@@ -243,4 +267,29 @@ end
 function mirrorghost(f::ScalarBlockField{D}, ci::CartesianIndices{D},
                      dir::CartesianIndex{D}) where {D}
     CartesianIndices(ntuple(d->mirrorghost(f, ci.indices[d], dir[d]), Val(D)))
+end
+
+
+"""
+    Copies all blocks in the `layer` from `src` to `dest`
+"""
+function copyto!(dest, src, layer::BlockLayer)
+    @batch for (_, blk) in layer.pairs
+        b1 = getblk(dest, blk)
+        b2 = getblk(src, blk)
+        @turbo b1 .= b2
+    end
+end
+
+
+"""
+    Writes into `dest` the difference `a1` - `a2`.
+"""
+function diffto!(dest, a1, a2, layer::BlockLayer)
+    @batch for (_, blk) in layer.pairs
+        destblk = getblk(dest, blk)
+        a1blk = getblk(a1, blk)
+        a2blk = getblk(a2, blk)
+        @turbo destblk .= a1blk .- a2blk
+    end
 end

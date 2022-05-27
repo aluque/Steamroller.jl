@@ -6,6 +6,7 @@ using DocStringExtensions
 using DataStructures
 using LoopVectorization
 using Polyester
+using MacroTools
 
 const BlockIndex = Int16
 

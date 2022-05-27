@@ -28,7 +28,7 @@ end
 """
     Fill blocks at a given level with restrictions from their parent blocks.
 """
-function restrict_blocks!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
+function restrict_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
     @batch for edge in v
         src = getblk(u, edge.fine)
         dest = getblk(u, edge.coarse)
@@ -40,7 +40,7 @@ end
 """
     Fill all parent blocks with restrict from their children.
 """
-function restrict_blocks!(u::ScalarBlockField{D}, conn::Connectivity, bc) where {D}
+function restrict_full!(u::ScalarBlockField{D}, conn::Connectivity, bc) where {D}
     for i in length(conn.child):-1:1
         restrict_blocks!(u, conn.child[i])
     end
