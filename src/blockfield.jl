@@ -32,7 +32,14 @@ struct ScalarBlockField{D, M, G, T, A}
     end
 end
 
+"""
+    A vector block field encoded in a series of MArrays.
 
+    Each MArray corresponding to a block has dimensions
+    (M + 2G + 1, M + 2G + 1, ..., D).
+    Usually we use this to store a vector field evaluated at cell
+    interfaces and related to a gradient of a scalar field.    
+"""
 struct VectorBlockField{D, M, G, T, A}
     # We cannot construct the type here so it must be parametric
     val::Vector{A}
@@ -63,7 +70,7 @@ end
 const BlockField = Union{ScalarBlockField, VectorBlockField}
 
 getblk(f::BlockField, blk) = f.val[blk]
-valid(f::BlockField, blk) = view(f.val[blk], validindices(f))
+valid(f::ScalarBlockField, blk) = view(f.val[blk], validindices(f))
 
 """
     Creates a new block and returns its index.
@@ -151,6 +158,10 @@ end
 
 function validindices(f::ScalarBlockField{D, M, G}) where {D, M, G}
     CartesianIndices(ntuple(_ -> G + 1:G + M, Val(D)))
+end
+
+function validindices(f::VectorBlockField{D, M, G}, dim::Integer) where {D, M, G}
+    CartesianIndices(ntuple(d -> d == dim ? ((G + 1):(G + M + 1)) : ((G + 1):(G + M), Val(D))))
 end
 
 function subblockindices(f::ScalarBlockField{D, M, G}, sb::CartesianIndex) where {D, M, G}

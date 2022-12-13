@@ -28,11 +28,6 @@ function fmg!(u, b, r, u1, s,
         
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)
-        fill_ghost!(b, l - 1, conn, bc)        
-
-        # residual_postrestrict_level!(r, u, b, 4sl, tree[l - 1],
-        #                              conn.child[l], geometry, lpldisc)
-        # fill_ghost!(r, l - 1, conn, bc)
     end
 
     for l in 1:lmax
@@ -62,7 +57,8 @@ end
 """
 function vcycle!(u, b, r, u1, s,
                  tree, conn, geometry, bc, lpldisc;
-                 lmax=0, ndown=3, ntop=5, nup=3, ω=1.25)
+                 lmax=0, ndown=3, ntop=5, nup=3,
+                 ω=1.0)
     (lmax == 0) && (lmax = length(tree))
     
     # The "descending" side of the V
@@ -86,11 +82,9 @@ function vcycle!(u, b, r, u1, s,
         
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)        
-        fill_ghost!(b, l - 1, conn, bc)
     end
     
     gauss_seidel_iter!(u, b, ω, s, ntop, 1, tree, conn, geometry, bc, lpldisc)
-    fill_ghost!(u, 1, conn, bc)
     
     # The ascending side of the V
     for l in 2:lmax
@@ -103,8 +97,7 @@ function vcycle!(u, b, r, u1, s,
         interp_add_level!(u, u1, conn.child[l])
         fill_ghost!(u, l, conn, bc)
 
-        gauss_seidel_iter!(u, b, ω, sl, nup, l, tree, conn,
-                           geometry, bc, lpldisc)
+        gauss_seidel_iter!(u, b, ω, sl, nup, l, tree, conn, geometry, bc, lpldisc)
 
         fill_ghost!(u, l, conn, bc)
     end
@@ -143,6 +136,10 @@ end
 
 @inline parity(I::CartesianIndex) = parity(Tuple(I))
 
+struct RedBlack{P}; end
+struct FourColors{P1, P2}; end
+
+
 """
     Apply Red-black Gauss-Seidel in a block.
 
@@ -160,7 +157,7 @@ end
 function gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
                        ld::LaplacianDiscretization{D},
-                       geom::GT, par::Val{P}) where {D, M, G, GT, P}
+                       geom::GT, par::RedBlack{P}) where {D, M, G, GT, P}
     ublk = getblk(u, blk)
     bblk = getblk(b, blk)
     
@@ -177,12 +174,43 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
         c = diagelm(ld, geom, Val(:lhs), J)
         
         Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
-        Rb = applystencil(bblk, I, J, ld, geom, Val(:rhs))
 
-        ublk[I] -= ω * (Lu + s * Rb) / c
+        ublk[I] -= ω * (Lu + s * bblk[I]) / c
     end
 end
+
+
+function gauss_seidel!(u::ScalarBlockField{D, M, G},
+                       b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
+                       ld::LaplacianDiscretization{D},
+                       geom::GT, par::FourColors{P1, P2}) where {D, M, G, GT, P1, P2}
+    ublk = getblk(u, blk)
+    bblk = getblk(b, blk)
     
+    gbl0 = global_first(blkpos, M)
+    
+    hinds = CartesianIndices(ntuple(d -> d <= 2 ? validrange2(u) : validrange(u),
+                                    Val(D)))
+
+    for I1 in hinds
+        p1 = P1
+        p2 = P2
+        if D == 3
+            p1 = rem(p1 + I1[3], 2)
+            p2 = rem(p2 + I1[3], 2)
+        end
+        
+        I = Base.setindex(Base.setindex(I1, I1[1] + p1, 1), I1[2] + p2, 2)
+
+        J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
+        c = diagelm(ld, geom, Val(:lhs), J)
+        
+        Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
+
+        ublk[I] -= ω * (Lu + s * bblk[I]) / c
+    end
+end
+
 
 """
     Apply Gauss-Seidel to all blocks in a layer. 
@@ -199,19 +227,50 @@ end
     Apply GS both read and black at a given level `n` times, updating the ghost cells
     as needed.  This function can be safely iterated
 """
-function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc, lpldisc)
+function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
+                            lpldisc::LaplacianDiscretization{D, 2}) where D
     for i in 1:n
         gauss_seidel_level!(u, b, ω, s, tree[l],
-                            lpldisc, geometry, Val(0))
+                            lpldisc, geometry, RedBlack{0}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
         fill_ghost_bnd!(u, conn.boundary[l], bc)
         
         gauss_seidel_level!(u, b, ω, s, tree[l],
-                            lpldisc, geometry, Val(1))
+                            lpldisc, geometry, RedBlack{1}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
         fill_ghost_bnd!(u, conn.boundary[l], bc)            
+    end
+end
+
+# For the 4th order discretization, use 4 colors.
+function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
+                            lpldisc::LaplacianDiscretization{D, 4}) where D
+    for i in 1:n
+        gauss_seidel_level!(u, b, ω, s, tree[l],
+                            lpldisc, geometry, FourColors{0, 0}())
+        
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_bnd!(u, conn.boundary[l], bc)
+        
+        gauss_seidel_level!(u, b, ω, s, tree[l],
+                            lpldisc, geometry, FourColors{0, 1}())
+        
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_bnd!(u, conn.boundary[l], bc)            
+
+        gauss_seidel_level!(u, b, ω, s, tree[l],
+                            lpldisc, geometry, FourColors{1, 0}())
+        
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_bnd!(u, conn.boundary[l], bc)            
+
+        gauss_seidel_level!(u, b, ω, s, tree[l],
+                            lpldisc, geometry, FourColors{1, 1}())
+        
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_bnd!(u, conn.boundary[l], bc)        
     end
 end
 
@@ -242,9 +301,8 @@ function residual!(r::ScalarBlockField{D, M, G},
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
         Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
-        Rb = applystencil(bblk, I, J, ld, geom, Val(:rhs))
 
-        rblk[I] = -(Rb + Lu / s)
+        rblk[I] = -(bblk[I] + Lu / s)
     end
 end
 
@@ -268,9 +326,8 @@ function residual_subblock!(r::ScalarBlockField{D, M, G},
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
         Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
-        Rb = applystencil(bblk, I, J, ld, geom, Val(:rhs))
 
-        rblk[I] = -(Rb + Lu / s)
+        rblk[I] = -(bblk[I] + Lu / s)
     end
 end
 
@@ -283,6 +340,43 @@ function residual_level!(r, u, b, s, layer, lpldisc, geometry)
         residual!(r, u, b, s, coord, blk, lpldisc, geometry)
     end
 end
+
+
+"""
+    Compute the rhs of the Laplacian discretization.
+
+    This is only neccesary for 4th-order compact discretization where we solve
+    Lu + Rb = 0 (with L a lhs and R an rhs operator).
+"""
+function rhs!(b1::ScalarBlockField{D, M, G},
+              b::ScalarBlockField{D, M, G},
+              blkpos, blk,
+              ld::LaplacianDiscretization{D},
+              geom::GT) where {D, M, G, GT}
+    b1blk = getblk(b1, blk)
+    bblk = getblk(b, blk)
+    
+    gbl0 = global_first(blkpos, M)
+    
+    for I in CartesianIndices(ntuple(d -> validrange(b1), Val(D)))
+        J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
+        
+        Rb = applystencil(bblk, I, J, ld, geom, Val(:rhs))
+        b1blk[I] = Rb
+    end
+end
+
+
+"""
+    Compute rhs for all blocks in a layer. 
+"""
+function rhs_level!(b1, b, layer, ld, geometry)
+    @batch for i in eachindex(layer.pairs)
+        (coord, blk) = layer.pairs[i]
+        rhs!(b1, b, coord, blk, ld, geometry)
+    end
+end
+
 
 function resnorm!(r, b, u, s,
                   tree, conn, geometry, bc, lpldisc)
@@ -311,3 +405,37 @@ function resnorm!(r, b, u, s,
     
     return sqrt(w)
 end
+
+
+""" Compute the electric field in a block. """
+function electric_field!(f::VectorBlockField{D, M, G},
+                         u::ScalarBlockField{D, M, G}, h, blk) where {D, M, G}
+    ublk = getblk(u, blk)
+    fblk = getblk(f, blk)
+
+    for d in 1:D
+        @turbo for I in validindices(f, d)
+            I1 = Base.setindex(I, I[d] - 1, d)
+            fblk[I, d] = (ublk[I1] - ublk[I]) / h
+        end
+    end
+end
+
+""" Compute the electric field in a level of the tree. """
+function electric_field_level!(f, u, h, layer)
+    @batch for i in eachindex(layer.pairs)
+        (coord, blk) = layer.pairs[i]
+        electric_field!(f, u, h, blk)
+    end
+end
+
+""" Compute the electric field in a level of the tree. """
+function electric_field_tree!(f, u, h1, tree)
+    lmax = length(tree)
+    for l in 1:lmax
+        h = h1 / (1 << (lmax - 1))
+        electric_field_level!(f, u, h, tree[l])
+    end
+end
+
+
