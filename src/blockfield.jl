@@ -12,23 +12,25 @@ greetme() = "Hello World hello now"
     `G`: Number of ghost cells
     `A`: MArray type
 """
-struct ScalarBlockField{D, M, G, T, A}
-    val::Vector{A}
+struct ScalarBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
+    u::A
 
     function ScalarBlockField{D, M, G, T}() where {D, M, G, T}
         @assert rem(M, 2) == 0 "Block size must be divisible by 2"
 
         S = M + 2G
+        N = D + 1
         val = MArray{NTuple{D, S}, T, D, S^D}[]
-        new{D, M, G, T, eltype(val)}(val)
+        new{D, M, G, T, N, typeof(val)}(val)
     end
 
     function ScalarBlockField{D, M, G, T}(len) where {D, M, G, T}
         @assert rem(M, 2) == 0 "Block size must be divisible by 2"
 
         S = M + 2G
+        N = D + 1
         val = [zero(MArray{NTuple{D, S}, Float64}) for i in 1:len]
-        new{D, M, G, T, eltype(val)}(val)
+        new{D, M, G, T, N, typeof(val)}(val)
     end
 end
 
@@ -40,18 +42,18 @@ end
     Usually we use this to store a vector field evaluated at cell
     interfaces and related to a gradient of a scalar field.    
 """
-struct VectorBlockField{D, M, G, T, A}
+struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
     # We cannot construct the type here so it must be parametric
-    val::Vector{A}
+    u::A
 
     function VectorBlockField{D, M, G, T}() where {D, M, G, T}
         @assert rem(M, 2) == 0 "Block size must be divisible by 2"
 
         S = M + 2G + 1
         MT = Tuple{ntuple(_ -> S, Val(D))..., D}
-        
+        N = D + 2
         val = MArray{MT, T}[]
-        new{D, M, G, T, eltype(val)}(val)
+        new{D, M, G, T, N, typeof(val)}(val)
     end
 
     function VectorBlockField{D, M, G, T}(len) where {D, M, G, T}
@@ -59,9 +61,9 @@ struct VectorBlockField{D, M, G, T, A}
 
         S = M + 2G + 1
         MT = Tuple{ntuple(_ -> S, Val(D))..., D}
-
+        N = D + 2
         val = zeros(MArray{MT, T}, len)
-        new{D, M, G, T, eltype(val)}(val)
+        new{D, M, G, T, N, typeof(val)}(val)
     end
 end
 
@@ -69,8 +71,8 @@ end
 # Most frequently we have to dispatch with D,  D and M or D, M, G so we define shortcuts
 const BlockField = Union{ScalarBlockField, VectorBlockField}
 
-getblk(f::BlockField, blk) = f.val[blk]
-valid(f::ScalarBlockField, blk) = view(f.val[blk], validindices(f))
+getblk(f::BlockField, blk) = f.u[blk]
+valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
 
 """
     Creates a new block and returns its index.
@@ -78,8 +80,8 @@ valid(f::ScalarBlockField, blk) = view(f.val[blk], validindices(f))
 function newblock!(f::ScalarBlockField{D, M, G}) where {D, M, G}
     S = M + 2G
     z = zero(MArray{NTuple{D, S}, Float64})
-    push!(f.val, z)
-    return length(f.val)
+    push!(f.u, z)
+    return length(f.u)
 end
 
 """
@@ -89,9 +91,9 @@ function newblocks!(f::ScalarBlockField{D, M, G}, n) where {D, M, G}
     S = M + 2G
     for i in 1:n
         z = zero(MArray{NTuple{D, S}, Float64})
-        push!(f.val, z)
+        push!(f.u, z)
     end
-    return length(f.val)
+    return length(f.u)
 end
 
 """
@@ -102,8 +104,8 @@ function newblock!(f::VectorBlockField{D, M, G}) where {D, M, G}
     MT = Tuple{ntuple(_ -> S, Val(D))..., D}
     
     z = zero(MArray{MT, Float64})
-    push!(f.val, z)
-    return length(f.val)
+    push!(f.u, z)
+    return length(f.u)
 end
 
 """
@@ -114,9 +116,9 @@ function newblocks!(f::VectorBlockField{D, M, G}, n) where {D, M, G}
     MT = Tuple{ntuple(_ -> S, Val(D))..., D}
     for i in 1:n
         z = zero(MArray{MT, Float64})
-        push!(f.val, z)
+        push!(f.u, z)
     end
-    return length(f.val)
+    return length(f.u)
 end
 
 
@@ -125,12 +127,12 @@ end
     Delete block at index `blk` by moving the last block into `blk`
 """
 function Base.deleteat!(f::BlockField, blk)
-    last = pop!(f.val)
+    last = pop!(f.u)
 
     # Did we remove the last block?
-    (blk > length(f.val)) && return
+    (blk > length(f.u)) && return
 
-    f.val[blk] = last
+    f.u[blk] = last
 end
 
 # Helper functions that should reduce to compile-time constants

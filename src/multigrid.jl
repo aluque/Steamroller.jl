@@ -382,8 +382,8 @@ function resnorm!(r, b, u, s,
     end
 
     # r .= r .^ 2
-    @batch for i in eachindex(r.val)
-        m = r.val[i]
+    @batch for i in eachindex(r.u)
+        m = r.u[i]
         m .= m.^2
     end
     

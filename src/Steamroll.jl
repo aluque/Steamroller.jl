@@ -7,6 +7,7 @@ using DataStructures
 using LoopVectorization
 using Polyester
 using MacroTools
+using RecursiveArrayTools
 
 const BlockIndex = Int16
 

@@ -66,7 +66,7 @@ end
                     
                     # Indexing with CartesianIndex into an MArray falls back
                     # to an AbstractArray method which is much less efficient.
-                    u.val[blk][Tuple(addghost(u, I))...] = @ncall $D f r
+                    u.u[blk][Tuple(addghost(u, I))...] = @ncall $D f r
                 end
             end
         end
