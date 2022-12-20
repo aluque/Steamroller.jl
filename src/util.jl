@@ -61,7 +61,7 @@ end
                 for I in localindices(u)
                     @nexprs $D d -> (r_d = centers[d][I[d]])
 
-                    v = getblk(u, blk)
+                    v = u[blk]
                     #v[addghost(u, I)] = f(r...)
                     
                     # Indexing with CartesianIndex into an MArray falls back

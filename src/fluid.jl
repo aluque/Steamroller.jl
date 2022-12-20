@@ -6,9 +6,6 @@ function derivs!(dne::ScalarBlockField{D, M, G},
                  ne::ScalarBlockField{D, M, G},
                  e::VectorBlockField{D, M, G}, h,
                  trans, geom, blk, blkpos) where {D, M, G}
-    dneblk = getblk(dne, blk)
-    neblk = getblk(ne, blk)
-    eblk = getblk(e, blk)
     gbl0 = global_first(blkpos, M)
 
     for d in 1:D
@@ -20,10 +17,10 @@ function derivs!(dne::ScalarBlockField{D, M, G},
             J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
             J1 = Base.setindex(J, J[d] - 1, d)
             
-            ed = eblk[I, d]
+            ed = e[I, d, blk]
 
             # Interpolate the electric field into the face location
-            eint2 = ntuple(d1 -> d1 == d ? ed^2 : avgvector(eblk, d1, I, D)^2, Val(D))
+            eint2 = ntuple(d1 -> d1 == d ? ed^2 : avgvector(e[blk], d1, I, D)^2, Val(D))
 
             #eabs = sqrt(sum(eint2))
             eabs = 3e6
@@ -38,14 +35,14 @@ function derivs!(dne::ScalarBlockField{D, M, G},
             Iu  = Base.setindex(I, I[d] + div(-sv - 1, 2), d)
             Iu2 = Base.setindex(I, I[d] + div(-3sv - 1, 2), d)
 
-            theta = (neblk[Iu] - neblk[Iu2]) / (neblk[Id] - neblk[Iu])
-            F = v * (neblk[Iu] + koren_limited(neblk[Iu] - neblk[Iu2], neblk[Id] - neblk[Iu]))            
+            #theta = (ne[Iu, blk] - ne[Iu2, blk]) / (ne[Id, blk] - ne[Iu, blk])
+            F = v * (ne[Iu, blk] + koren_limited(ne[Iu, blk] - ne[Iu2, blk], ne[Id, blk] - ne[Iu, blk]))            
 
             # The diffusion flux
-            F += diff * (neblk[I1] - neblk[I]) / h
+            F += diff * (ne[I1, blk] - ne[I, blk]) / h
 
-            dneblk[I]  += factor(geom, J, I1 - I) * F / h
-            dneblk[I1] -= factor(geom, J1, I - I1) * F / h 
+            dne[I, blk]  += factor(geom, J, I1 - I) * F / h
+            dne[I, blk] -= factor(geom, J1, I - I1) * F / h 
         end
     end    
 end

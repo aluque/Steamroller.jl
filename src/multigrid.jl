@@ -152,9 +152,6 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
                        ld::LaplacianDiscretization{D},
                        geom::GT, par::RedBlack{P}) where {D, M, G, GT, P}
-    ublk = getblk(u, blk)
-    bblk = getblk(b, blk)
-    
     gbl0 = global_first(blkpos, M)
     
     hinds = CartesianIndices(ntuple(d -> d == 1 ? validrange2(u) : validrange(u),
@@ -167,9 +164,9 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         c = diagelm(ld, geom, Val(:lhs), J)
         
-        Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
 
-        ublk[I] -= ω * (Lu + s * bblk[I]) / c
+        u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
     end
 end
 
@@ -178,9 +175,6 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
                        ld::LaplacianDiscretization{D},
                        geom::GT, par::FourColors{P1, P2}) where {D, M, G, GT, P1, P2}
-    ublk = getblk(u, blk)
-    bblk = getblk(b, blk)
-    
     gbl0 = global_first(blkpos, M)
     
     hinds = CartesianIndices(ntuple(d -> d <= 2 ? validrange2(u) : validrange(u),
@@ -199,9 +193,9 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         c = diagelm(ld, geom, Val(:lhs), J)
         
-        Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
 
-        ublk[I] -= ω * (Lu + s * bblk[I]) / c
+        u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
     end
 end
 
@@ -285,18 +279,14 @@ function residual!(r::ScalarBlockField{D, M, G},
                    b::ScalarBlockField{D, M, G}, s, blkpos, blk,
                    ld::LaplacianDiscretization{D},
                    geom::GT) where {D, M, G, GT}
-    rblk = getblk(r, blk)
-    ublk = getblk(u, blk)
-    bblk = getblk(b, blk)
-    
     gbl0 = global_first(blkpos, M)
     
     for I in CartesianIndices(ntuple(d -> validrange(r), Val(D)))
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
 
-        rblk[I] = -(bblk[I] + Lu / s)
+        r[I, blk] = -(b[I, blk] + Lu / s)
     end
 end
 
@@ -310,10 +300,6 @@ function residual_subblock!(r::ScalarBlockField{D, M, G},
                             u::ScalarBlockField{D, M, G},
                             b::ScalarBlockField{D, M, G}, s, blkpos, blk,
                             geom, ld::LaplacianDiscretization{D}, subblock) where {D, M, G}
-    rblk = getblk(r, blk)
-    ublk = getblk(u, blk)
-    bblk = getblk(b, blk)
-    
     gbl0 = global_first(blkpos, M)
     
     for I in subblockindices(r, subblock)
@@ -321,7 +307,7 @@ function residual_subblock!(r::ScalarBlockField{D, M, G},
         
         Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
 
-        rblk[I] = -(bblk[I] + Lu / s)
+        r[I, blk] = -(b[I, blk] + Lu / s)
     end
 end
 
@@ -347,16 +333,13 @@ function rhs!(b1::ScalarBlockField{D, M, G},
               blkpos, blk,
               ld::LaplacianDiscretization{D},
               geom::GT) where {D, M, G, GT}
-    b1blk = getblk(b1, blk)
-    bblk = getblk(b, blk)
-    
     gbl0 = global_first(blkpos, M)
     
     for I in CartesianIndices(ntuple(d -> validrange(b1), Val(D)))
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Rb = applystencil(bblk, I, J, ld, geom, Val(:rhs))
-        b1blk[I] = Rb
+        Rb = applystencil(b[blk], I, J, ld, geom, Val(:rhs))
+        b1[I, blk] = Rb
     end
 end
 
@@ -394,7 +377,7 @@ function resnorm!(r, b, u, s,
 
     w = zero(eltype(r))
     for (coord, blk) in tree[1]
-        w += sum(view(getblk(r, blk), validindices(r)))
+        w += sum(view(r[blk], validindices(r)))
     end
     
     return sqrt(w)
@@ -405,13 +388,10 @@ end
 function electric_field!(f::VectorBlockField{D, M, G},
                          u::ScalarBlockField{D, M, G}, h, blk,
                          e0) where {D, M, G}
-    ublk = getblk(u, blk)
-    fblk = getblk(f, blk)
-
     for d in 1:D
         for I in validindices(f, d)
             I1 = Base.setindex(I, I[d] - 1, d)
-            fblk[I, d] = (ublk[I1] - ublk[I]) / h + e0[d]
+            f[I, d, blk] = (u[I1, blk] - u[I, blk]) / h + e0[d]
         end
     end
 end

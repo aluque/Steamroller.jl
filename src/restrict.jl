@@ -30,8 +30,8 @@ end
 """
 function restrict_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
     @batch for edge in v
-        src = getblk(u, edge.fine)
-        dest = getblk(u, edge.coarse)
+        src = u[edge.fine]
+        dest = u[edge.coarse]
         restrict!(dest, subblockindices(u, edge.subblock), src, validindices(u))
     end
 end

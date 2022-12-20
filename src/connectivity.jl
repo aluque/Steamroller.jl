@@ -146,8 +146,8 @@ function fill_ghost_copy!(u::ScalarBlockField{D}, v::Vector{Neighbor{D}}) where 
         overlap = overlapindices(u, edge.face)
         ghost = ghostindices(u, -edge.face)
         
-        ufrom = getblk(u, edge.from)
-        uto = getblk(u, edge.to)
+        ufrom = u[edge.from]
+        uto = u[edge.to]
         
         for I in CartesianIndices(overlap)
             uto[ghost[I]] = ufrom[overlap[I]]
@@ -177,7 +177,7 @@ function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}}, bc) whe
         ghost = ghostindices(u, link.face)
         valid = mirrorghost(u, ghost, link.bnd)
         
-        ublk = getblk(u, link.block)
+        ublk = u[link.block]
         CI = CartesianIndices(ghost)
         # This is wrong for corners not in the domain corners.
         s = getbc(bc, link.bnd)
@@ -209,8 +209,8 @@ end
 """
 function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
     @batch for edge in v
-        src = getblk(u, edge.coarse)
-        dest = getblk(u, edge.fine)
+        src = u[edge.coarse]
+        dest = u[edge.fine]
         interp!(dest, ghostindices(u, edge.face),
                 src, subblockbnd(u, edge.subblock, -edge.face))
     end

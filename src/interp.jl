@@ -64,8 +64,8 @@ end
 """
 function interp_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
     @batch for edge in v
-        src = getblk(u, edge.coarse)
-        dest = getblk(u, edge.fine)
+        src = u[edge.coarse]
+        dest = u[edge.fine]
         interp!(dest, validindices(u), src, subblockindices(u, edge.subblock))
     end
 end
@@ -76,8 +76,8 @@ end
 function interp_add_level!(u::ScalarBlockField{D}, u1::ScalarBlockField{D},
                            v::Vector{Child{D}}) where {D}
     @batch for edge in v
-        src = getblk(u1, edge.coarse)
-        dest = getblk(u, edge.fine)
+        src = u1[edge.coarse]
+        dest = u[edge.fine]
         
         interp!(dest, validindices(u), src, subblockindices(u1, edge.subblock), +)
     end

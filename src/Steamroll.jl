@@ -9,7 +9,7 @@ using Polyester
 using MacroTools
 using RecursiveArrayTools
 
-const BlockIndex = Int16
+const BlockIndex = Int
 
 @template DEFAULT =
     """

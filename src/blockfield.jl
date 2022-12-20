@@ -314,8 +314,8 @@ end
 """
 function copyto!(dest, src, layer::BlockLayer)
     @batch for (_, blk) in layer.pairs
-        b1 = getblk(dest, blk)
-        b2 = getblk(src, blk)
+        b1 = dest[blk]
+        b2 = src[blk]
         @turbo b1 .= b2
     end
 end
@@ -326,9 +326,9 @@ end
 """
 function diffto!(dest, a1, a2, layer::BlockLayer)
     @batch for (_, blk) in layer.pairs
-        destblk = getblk(dest, blk)
-        a1blk = getblk(a1, blk)
-        a2blk = getblk(a2, blk)
+        destblk = dest[blk]
+        a1blk = a1[blk]
+        a2blk = a2[blk]
         @turbo destblk .= a1blk .- a2blk
     end
 end
