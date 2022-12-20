@@ -103,12 +103,6 @@ function vcycle!(u, b, r, u1, s,
     end
 end
 
-function fill_ghost!(u, l, conn, bc)
-    fill_ghost_copy!(u, conn.neighbor[l])
-    fill_ghost_bnd!(u, conn.boundary[l], bc)
-    fill_ghost_interp!(u, conn.refboundary[l])
-end
-
 
 """ 
     Compute residuals in the subblocks that have been updated with a restriction.
@@ -409,33 +403,32 @@ end
 
 """ Compute the electric field in a block. """
 function electric_field!(f::VectorBlockField{D, M, G},
-                         u::ScalarBlockField{D, M, G}, h, blk) where {D, M, G}
+                         u::ScalarBlockField{D, M, G}, h, blk,
+                         e0) where {D, M, G}
     ublk = getblk(u, blk)
     fblk = getblk(f, blk)
 
     for d in 1:D
-        @turbo for I in validindices(f, d)
+        for I in validindices(f, d)
             I1 = Base.setindex(I, I[d] - 1, d)
-            fblk[I, d] = (ublk[I1] - ublk[I]) / h
+            fblk[I, d] = (ublk[I1] - ublk[I]) / h + e0[d]
         end
     end
 end
 
 """ Compute the electric field in a level of the tree. """
-function electric_field_level!(f, u, h, layer)
+function electric_field_level!(f, u, h, layer, e0)
     @batch for i in eachindex(layer.pairs)
         (coord, blk) = layer.pairs[i]
-        electric_field!(f, u, h, blk)
+        electric_field!(f, u, h, blk, e0)
     end
 end
 
 """ Compute the electric field in a level of the tree. """
-function electric_field_tree!(f, u, h1, tree)
+function electric_field_tree!(f, u, h1, tree, e0)
     lmax = length(tree)
     for l in 1:lmax
         h = h1 / (1 << (lmax - 1))
-        electric_field_level!(f, u, h, tree[l])
+        electric_field_level!(f, u, h, tree[l], e0)
     end
 end
-
-

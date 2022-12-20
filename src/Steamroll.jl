@@ -29,6 +29,7 @@ include("geometry.jl")
 include("laplacian.jl")
 include("multigrid.jl")
 include("transport.jl")
+include("fluid.jl")
 include("util.jl")
 
 end # module

@@ -1,0 +1,97 @@
+#=
+Routines for solving the fluid equations.
+=#
+
+function derivs!(dne::ScalarBlockField{D, M, G},
+                 ne::ScalarBlockField{D, M, G},
+                 e::VectorBlockField{D, M, G}, h,
+                 trans, geom, blk, blkpos) where {D, M, G}
+    dneblk = getblk(dne, blk)
+    neblk = getblk(ne, blk)
+    eblk = getblk(e, blk)
+    gbl0 = global_first(blkpos, M)
+
+    for d in 1:D
+        for I in validindices(e, d)
+            # Compute flux between I and I1, which is 1 cell lower in the d dimension.
+            I1 = Base.setindex(I, I[d] - 1, d)
+                        
+            # Global index
+            J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
+            J1 = Base.setindex(J, J[d] - 1, d)
+            
+            ed = eblk[I, d]
+
+            # Interpolate the electric field into the face location
+            eint2 = ntuple(d1 -> d1 == d ? ed^2 : avgvector(eblk, d1, I, D)^2, Val(D))
+
+            #eabs = sqrt(sum(eint2))
+            eabs = 3e6
+            μ = mobility(trans, eabs)
+            diff = diffusion(trans, eabs)
+
+            v = -ed * μ
+            sv = signbit(v) ? -1 : 1
+
+            # The downstream, upstream and twice-upstream indices
+            Id  = Base.setindex(I, I[d] + div(sv - 1, 2), d)
+            Iu  = Base.setindex(I, I[d] + div(-sv - 1, 2), d)
+            Iu2 = Base.setindex(I, I[d] + div(-3sv - 1, 2), d)
+
+            theta = (neblk[Iu] - neblk[Iu2]) / (neblk[Id] - neblk[Iu])
+            F = v * (neblk[Iu] + koren_limited(neblk[Iu] - neblk[Iu2], neblk[Id] - neblk[Iu]))            
+
+            # The diffusion flux
+            F += diff * (neblk[I1] - neblk[I]) / h
+
+            dneblk[I]  += factor(geom, J, I1 - I) * F / h
+            dneblk[I1] -= factor(geom, J1, I - I1) * F / h 
+        end
+    end    
+end
+
+function derivs_level!(dne, ne, e, h, trans, geom, layer)
+    @batch for i in eachindex(layer.pairs)
+        (coord, blk) = layer.pairs[i]
+        derivs!(dne, ne, e, h, trans, geom, blk, coord)
+    end
+end
+
+function derivs_tree!(dne, ne, e, h, trans, geom, tree)
+    for layer in tree
+        derivs_level!(dne, ne, e, h, trans, geom, layer)
+        h /= 2
+    end
+end
+
+
+"""
+    Average the `i` component of the vector field `v` around cell `I`.
+"""
+@inline function avgvector(v, i, I, D)
+    x = zero(eltype(v))
+    for S in CubeStencil{D, -1}()
+        x += v[(I + S), i]
+    end
+    return x / 2^D
+end
+
+
+""" The Koren limiter. """        
+@inline function koren_limiter(theta)
+    (theta >= 4.0) && return 1.0
+    (theta > 0.4) && return 1.0 / 3.0 + theta / 6.0
+    (theta > 0.0) && return theta
+    0.0
+end
+
+@inline function koren_limited(a, b)
+    (a, b) = promote(a, b)
+    
+    # theta = a / b. We return ψ(θ) * b
+    (a * b < 0) && return zero(a)
+
+    (abs(a) > abs(4b)) && return b
+    (abs(10a) > abs(4b)) && return b/3 + a/6
+    return a    
+end

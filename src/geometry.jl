@@ -20,7 +20,7 @@ struct CylindricalGeometry{D} <: AbstractGeometry end
 
 
 """
-    Compute `r[i + 2δ]/r[i]` around coordinates given by `c`. r[i] is a cell 
+    Compute `r[i + δ/2]/r[i]` around coordinates given by `c`. r[i] is a cell 
     center; r[i + 1/2] is the cell edge.
 """
 @inline function factor(::CylindricalGeometry{D}, c, δ) where D

@@ -131,6 +131,12 @@ function connectivity(tree::Tree{D}, stencil) where {D}
 end
 
 
+function fill_ghost!(u, l, conn, bc)
+    fill_ghost_copy!(u, conn.neighbor[l])
+    fill_ghost_bnd!(u, conn.boundary[l], bc)
+    fill_ghost_interp!(u, conn.refboundary[l])
+end
+
 """
     Fill ghost cells by copying neighboring cells in the same layer.
     `v` contains a vector with `Neighbor` relations.

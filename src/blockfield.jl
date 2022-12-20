@@ -94,6 +94,32 @@ function newblocks!(f::ScalarBlockField{D, M, G}, n) where {D, M, G}
     return length(f.val)
 end
 
+"""
+    Creates a new block and returns its index.
+"""
+function newblock!(f::VectorBlockField{D, M, G}) where {D, M, G}
+    S = M + 2G + 1
+    MT = Tuple{ntuple(_ -> S, Val(D))..., D}
+    
+    z = zero(MArray{MT, Float64})
+    push!(f.val, z)
+    return length(f.val)
+end
+
+"""
+    Creates a series of new blocks returns the final length.
+"""
+function newblocks!(f::VectorBlockField{D, M, G}, n) where {D, M, G}
+    S = M + 2G + 1
+    MT = Tuple{ntuple(_ -> S, Val(D))..., D}
+    for i in 1:n
+        z = zero(MArray{MT, Float64})
+        push!(f.val, z)
+    end
+    return length(f.val)
+end
+
+
 
 """
     Delete block at index `blk` by moving the last block into `blk`
@@ -161,7 +187,7 @@ function validindices(f::ScalarBlockField{D, M, G}) where {D, M, G}
 end
 
 function validindices(f::VectorBlockField{D, M, G}, dim::Integer) where {D, M, G}
-    CartesianIndices(ntuple(d -> d == dim ? ((G + 1):(G + M + 1)) : ((G + 1):(G + M), Val(D))))
+    CartesianIndices(ntuple(d -> d == dim ? ((G + 1):(G + M + 1)) : ((G + 1):(G + M)), Val(D)))
 end
 
 function subblockindices(f::ScalarBlockField{D, M, G}, sb::CartesianIndex) where {D, M, G}

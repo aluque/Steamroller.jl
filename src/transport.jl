@@ -5,7 +5,7 @@ abstract type AbstractTransportModel end
 """
     The transport model proposed in Bagheri et al. 2018.
 """
-@with_kw struct BagheriTransportModel{T} <: AbstractTransportModel
+Base.@kwdef struct BagheriTransportModel{T} <: AbstractTransportModel
     "μ0 in μe = μ0 |E|^eμ."
     μ0::T = 2.3987
 
@@ -55,7 +55,7 @@ end
     Townsend coefficient (excluding attachment) in transport model `m` for an electric field `eabs`.
 """
 @inline function townsend(m::BagheriTransportModel, eabs)
-    @unpack α0, α1, eα, mα, η = m
+    (;α0, α1, eα, mα, η) = m
 
     (α0 + α1 / eabs^eα) * exp(mα / eabs)
 end
@@ -64,7 +64,7 @@ end
     Townsend coefficient in transport model `m` for an electric field `eabs`.
 """
 @inline function nettownsend(m::BagheriTransportModel, eabs)
-    @unpack α0, α1, eα, mα, η = m
+    (;α0, α1, eα, mα, η) = m
 
     (α0 + α1 / eabs^eα) * exp(mα / eabs) - η
 end
@@ -74,7 +74,7 @@ end
     Net ionization in transport model `m` for an electric field `eabs`.
 """
 @inline function netionization(m::BagheriTransportModel, eabs)
-    @unpack α0, α1, eα, mα, η = m
+    (;α0, α1, eα, mα, η) = m
 
     α = nettownsend(m, eabs)
     α * eabs * mobility(m, eabs)
