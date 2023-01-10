@@ -404,11 +404,11 @@ function electric_field_level!(f, u, h, layer, e0)
     end
 end
 
-""" Compute the electric field in a level of the tree. """
+""" Compute the electric field in a full tree. """
 function electric_field_tree!(f, u, h1, tree, e0)
     lmax = length(tree)
     for l in 1:lmax
-        h = h1 / (1 << (lmax - 1))
-        electric_field_level!(f, u, h, tree[l], e0)
+        electric_field_level!(f, u, h1, tree[l], e0)
+        h1 = h1 / 2
     end
 end
