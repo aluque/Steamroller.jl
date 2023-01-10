@@ -4,7 +4,7 @@ BlockLayer object.
 =#
 
 """
-    Block layer in a space of dimension `D`.
+Block layer in a space of dimension `D`.
 """
 struct BlockLayer{D}
     level::Int
@@ -42,8 +42,8 @@ end
 
 
 """ 
-    Synchronize the pairs list with the index and coord dicts.
-    Must be called after each update of the layer (tree).
+Synchronize the pairs list with the index and coord dicts.
+Must be called after each update of the layer (tree).
 """
 function sync!(layer::BlockLayer)
     empty!(layer.pairs)
@@ -66,13 +66,13 @@ Base.eltype(layer::BlockLayer) = eltype(layer.pairs)
 
 
 """ 
-    Checks if a block exists in `layer` at a given coordinate `coord`.
+Checks if a block exists in `layer` at a given coordinate `coord`.
 """
 hasblock(layer, coord) = (coord in keys(layer.index))
 
 
 """
-    Add a block to a block layer `layer` at location `coord` with index `blk`.
+Add a block to a block layer `layer` at location `coord` with index `blk`.
 """
 function Base.setindex!(layer::BlockLayer, blk, coord)
     # Make sure that no duplicated id is added
@@ -85,7 +85,7 @@ end
 
 
 """
-    Remove from `layer` the block at location `coord`.
+Remove from `layer` the block at location `coord`.
 """
 function Base.delete!(layer::BlockLayer, coord::CartesianIndex)
     blk = get(layer.index, coord, 0)
@@ -96,7 +96,7 @@ end
 
 
 """
-    Remove from `layer` the block with index idx.
+Remove from `layer` the block with index idx.
 """
 function Base.delete!(layer::BlockLayer{D}, blk::BlockIndex) where D
     coord = get(layer.coord, blk, nothing)
@@ -114,37 +114,37 @@ end
 
 
 """ 
-    `Tree{D}` is a tree embedded in a space with dimension `D`.
+`Tree{D}` is a tree embedded in a space with dimension `D`.
 
-    The tree structure is represented by a `Vector` of `BlockLayers`.
+The tree structure is represented by a `Vector` of `BlockLayers`.
 """
 const Tree{D} = Vector{BlockLayer{D}}
 
 
 """
-    Create a series of layers up to level lmax, starting at level 1 with
-    a cube with sides of m blocks in dimension d.
+Create a series of layers up to level lmax, starting at level 1 with
+a cube with sides of m blocks in dimension d.
 """
 function Tree(D, domain, levels)
     map(l -> BlockLayer{D}(l, multiplyindices(domain, 1 << (l - 1))), 1:levels)
 end
 
 """
-    Return the number of blocks in the tree.
+Return the number of blocks in the tree.
 """
 nblocks(t::Tree) = sum(layer -> length(layer), t)
 
 
 """
-    Return a range for blocks of all levels contained in the tree
+Return a range for blocks of all levels contained in the tree
 """
 iblocks(t::Tree) = 1:nblocks(t)
 
 
 """
-    Return a tuple (level, coord, index) corresponding to block number `n` in the whole
-    tree.  This is useful sometimes as a way of traversing the tree in parallel but has
-    a small overhead.
+Return a tuple (level, coord, index) corresponding to block number `n` in the whole
+tree.  This is useful sometimes as a way of traversing the tree in parallel but has
+a small overhead.
 """
 function nth(t::Tree, n)
     lvl = 1

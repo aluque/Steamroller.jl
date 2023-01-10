@@ -13,10 +13,10 @@
 @inline _first(x, y) = x
 
 """
-    Interpolates from a rectangle of an D-dimensional array `src` to another 
-    D-dimensional array `dest`.
+Interpolates from a rectangle of an D-dimensional array `src` to another 
+D-dimensional array `dest`.
 
-    If `base` exists the results is added to the corresponding value there.
+If `base` exists the results is added to the corresponding value there.
 """
 @generated function interp!(dest::AbstractArray{T, D}, idest::CartesianIndices{D},
                             src::AbstractArray{T, D}, isrc::CartesianIndices{D},
@@ -60,7 +60,7 @@ end
 
 
 """
-    Fill blocks at a given level with interpolations from their parent blocks.
+Fill blocks at a given level with interpolations from their parent blocks.
 """
 function interp_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
     @batch for edge in v
@@ -71,7 +71,7 @@ function interp_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
 end
 
 """
-   Interpolate from u1 adding the result to u.
+Interpolate from u1 adding the result to u.
 """
 function interp_add_level!(u::ScalarBlockField{D}, u1::ScalarBlockField{D},
                            v::Vector{Child{D}}) where {D}
@@ -85,7 +85,7 @@ end
 
 
 """
-    Fill all children blocks with interpolations from their parents.
+Fill all children blocks with interpolations from their parents.
 """
 function interp_full!(u::ScalarBlockField{D}, conn::Connectivity, bc, func=_first) where {D}
     for i in 2:length(conn.child)

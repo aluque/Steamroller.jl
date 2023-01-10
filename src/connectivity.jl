@@ -43,9 +43,9 @@ end
 
 
 """ 
-    Struct to contain the relationship between blocks in a given tree
-    structure.  We use lists for each level to denote relationships.
-    $(FIELDS)
+Struct to contain the relationship between blocks in a given tree
+structure.  We use lists for each level to denote relationships.
+$(FIELDS)
 """
 struct Connectivity{D}    
     "For each level, list of blocks adjacent to a boundary."
@@ -78,10 +78,10 @@ Base.push!(c::Connectivity, level, item::T) where {T} = push!(__connections(c, T
 
 
 """ 
-    Find connectivities in `tree` represented by a list of block layers.
-    Neighbors are found according to `stencil` and the behaviour is defined
-    by a `handler` object that should have defined methods `boundary`, 
-    `neighbor` and `parent`.
+Find connectivities in `tree` represented by a list of block layers.
+Neighbors are found according to `stencil` and the behaviour is defined
+by a `handler` object that should have defined methods `boundary`, 
+`neighbor` and `parent`.
 """
 function connectivity(tree::Tree{D}, stencil) where {D}
     levels = length(tree)
@@ -138,8 +138,8 @@ function fill_ghost!(u, l, conn, bc)
 end
 
 """
-    Fill ghost cells by copying neighboring cells in the same layer.
-    `v` contains a vector with `Neighbor` relations.
+Fill ghost cells by copying neighboring cells in the same layer.
+`v` contains a vector with `Neighbor` relations.
 """
 function fill_ghost_copy!(u::ScalarBlockField{D}, v::Vector{Neighbor{D}}) where {D}
     @batch for edge in v
@@ -157,8 +157,8 @@ end
 
 
 """
-    Copy ghost cells from neighbouring blocks according to a full connectivity
-    structure `conn`.
+Copy ghost cells from neighbouring blocks according to a full connectivity
+structure `conn`.
 """
 function fill_ghost_copy!(u::ScalarBlockField, conn::Connectivity)
     # For each layer...
@@ -169,8 +169,8 @@ end
 
 
 """
-    Fill ghost cells in the boundary of a given layer by applying the 
-    boundary conditions specified by `bc`
+Fill ghost cells in the boundary of a given layer by applying the 
+boundary conditions specified by `bc`
 """
 function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}}, bc) where {D}
     @batch for link in v
@@ -191,9 +191,9 @@ end
 
 
 """
-    Fill ghost cells in boundary blocks according to given boundary conditions 
-    `bc`.
-    structure `conn`.
+Fill ghost cells in boundary blocks according to given boundary conditions 
+`bc`.
+structure `conn`.
 """
 function fill_ghost_bnd!(u::ScalarBlockField, conn::Connectivity, bc)
     # For each layer...
@@ -204,8 +204,8 @@ end
 
 
 """
-    Fill ghost cells by interpolating from parent blocks at refinement 
-    boundaries.
+Fill ghost cells by interpolating from parent blocks at refinement 
+boundaries.
 """
 function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
     @batch for edge in v
@@ -217,8 +217,8 @@ function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}) w
 end
 
 """
-    Fill ghost cells by interpolating from parent blocks at all refinement 
-    boundaries.
+Fill ghost cells by interpolating from parent blocks at all refinement 
+boundaries.
 """
 function fill_ghost_interp!(u::ScalarBlockField{D}, conn::Connectivity) where {D}
     # For each layer...

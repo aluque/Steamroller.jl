@@ -1,17 +1,17 @@
 """
-    Represent a Laplacian discretization in dimension D and order P.
-    Only P=2 and P=4 are supported now.
+Represent a Laplacian discretization in dimension D and order P.
+Only P=2 and P=4 are supported now.
 """
 struct LaplacianDiscretization{D,P}; end
 
 
 """
-    Build an expression that applies a static stencil.
+Build an expression that applies a static stencil.
 
-    `expr1` is a reference espression such as `u[I]`, `expr2` is the stencil
-    provided in place (not as a variable).  Optionally the full stencil 
-    application is divided by `denom`, which allows us to avoid too many
-    floating point operations.
+`expr1` is a reference espression such as `u[I]`, `expr2` is the stencil
+provided in place (not as a variable).  Optionally the full stencil 
+application is divided by `denom`, which allows us to avoid too many
+floating point operations.
 """ 
 macro stencil(expr1, expr2, denom=1)
     @capture(expr1, u_[I_]) ||

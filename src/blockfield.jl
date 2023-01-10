@@ -5,12 +5,12 @@
 greetme() = "Hello World hello now"
 
 """
-    A block field stored in a series of MArrays
-    Encoded in a type for performance reasons.
-    `D`: Number of dimensions
-    `M`: Side length in grid points
-    `G`: Number of ghost cells
-    `A`: MArray type
+A block field stored in a series of MArrays
+Encoded in a type for performance reasons.
+`D`: Number of dimensions
+`M`: Side length in grid points
+`G`: Number of ghost cells
+`A`: MArray type
 """
 struct ScalarBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
     u::A
@@ -35,12 +35,12 @@ struct ScalarBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
 end
 
 """
-    A vector block field encoded in a series of MArrays.
+A vector block field encoded in a series of MArrays.
 
-    Each MArray corresponding to a block has dimensions
-    (M + 2G + 1, M + 2G + 1, ..., D).
-    Usually we use this to store a vector field evaluated at cell
-    interfaces and related to a gradient of a scalar field.    
+Each MArray corresponding to a block has dimensions
+(M + 2G + 1, M + 2G + 1, ..., D).
+Usually we use this to store a vector field evaluated at cell
+interfaces and related to a gradient of a scalar field.    
 """
 struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
     # We cannot construct the type here so it must be parametric
@@ -75,7 +75,7 @@ getblk(f::BlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
 
 """
-    Creates a new block and returns its index.
+Creates a new block and returns its index.
 """
 function newblock!(f::ScalarBlockField{D, M, G}) where {D, M, G}
     S = M + 2G
@@ -85,7 +85,7 @@ function newblock!(f::ScalarBlockField{D, M, G}) where {D, M, G}
 end
 
 """
-    Creates a series of new blocks returns the final length.
+Creates a series of new blocks returns the final length.
 """
 function newblocks!(f::ScalarBlockField{D, M, G}, n) where {D, M, G}
     S = M + 2G
@@ -97,7 +97,7 @@ function newblocks!(f::ScalarBlockField{D, M, G}, n) where {D, M, G}
 end
 
 """
-    Creates a new block and returns its index.
+Creates a new block and returns its index.
 """
 function newblock!(f::VectorBlockField{D, M, G}) where {D, M, G}
     S = M + 2G + 1
@@ -109,7 +109,7 @@ function newblock!(f::VectorBlockField{D, M, G}) where {D, M, G}
 end
 
 """
-    Creates a series of new blocks returns the final length.
+Creates a series of new blocks returns the final length.
 """
 function newblocks!(f::VectorBlockField{D, M, G}, n) where {D, M, G}
     S = M + 2G + 1
@@ -124,7 +124,7 @@ end
 
 
 """
-    Delete block at index `blk` by moving the last block into `blk`
+Delete block at index `blk` by moving the last block into `blk`
 """
 function Base.deleteat!(f::BlockField, blk)
     last = pop!(f.u)
@@ -223,10 +223,11 @@ end
 
 # Handling of block boundaries
 
-""" Check that the index is a correct face specification. 
+"""
+Check that the index is a correct face specification. 
 
-    A CartesianIndex is a correct face specification if it consists only on
-    (-1, 0, 1) but not all indices are 0.
+A CartesianIndex is a correct face specification if it consists only on
+(-1, 0, 1) but not all indices are 0.
 """
 @generated function isface(face::CartesianIndex{D}) where {D}
     quote

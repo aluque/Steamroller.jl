@@ -3,7 +3,7 @@
 abstract type AbstractTransportModel end
 
 """
-    The transport model proposed in Bagheri et al. 2018.
+The transport model proposed in Bagheri et al. 2018.
 """
 Base.@kwdef struct BagheriTransportModel{T} <: AbstractTransportModel
     "μ0 in μe = μ0 |E|^eμ."
@@ -39,20 +39,20 @@ end
 
 
 """
-    Velocity in transport model `m` for an electric field `eabs`.
+Velocity in transport model `m` for an electric field `eabs`.
 """
 @inline mobility(m::BagheriTransportModel, eabs) = m.μ0 * eabs^m.eμ
 #@inline mobility(m::BagheriTransportModel, eabs) = 0.0372193
 
 
 """
-    Diffusion rate in transport model `m` for an electric field `eabs`.
+Diffusion rate in transport model `m` for an electric field `eabs`.
 """
 @inline diffusion(m::BagheriTransportModel, eabs) = m.D0 * eabs^m.eD
 
 
 """
-    Townsend coefficient (excluding attachment) in transport model `m` for an electric field `eabs`.
+Townsend coefficient (excluding attachment) in transport model `m` for an electric field `eabs`.
 """
 @inline function townsend(m::BagheriTransportModel, eabs)
     (;α0, α1, eα, mα, η) = m
@@ -61,7 +61,7 @@ end
 end
 
 """
-    Townsend coefficient in transport model `m` for an electric field `eabs`.
+Townsend coefficient in transport model `m` for an electric field `eabs`.
 """
 @inline function nettownsend(m::BagheriTransportModel, eabs)
     (;α0, α1, eα, mα, η) = m
@@ -71,7 +71,7 @@ end
 
 
 """
-    Net ionization in transport model `m` for an electric field `eabs`.
+Net ionization in transport model `m` for an electric field `eabs`.
 """
 @inline function netionization(m::BagheriTransportModel, eabs)
     (;α0, α1, eα, mα, η) = m

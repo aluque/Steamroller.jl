@@ -63,7 +63,7 @@ end
 
 
 """
-    Average the `i` component of the vector field `v` around cell `I`.
+Average the `i` component of the vector field `v` around cell `I`.
 """
 @inline function avgvector(v, i, I, D)
     x = zero(eltype(v))

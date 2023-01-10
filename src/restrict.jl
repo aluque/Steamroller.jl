@@ -1,6 +1,6 @@
 """
-    Restricts from a rectangle of an D-dimensional array `src` to another 
-    D-dimensional array `dest`.
+Restricts from a rectangle of an D-dimensional array `src` to another 
+D-dimensional array `dest`.
 """
 @generated function restrict!(dest::AbstractArray{T, D}, idest::CartesianIndices{D},
                               src::AbstractArray{T, D}, isrc::CartesianIndices{D}) where {T, D}
@@ -26,7 +26,7 @@ end
 
 
 """
-    Fill blocks at a given level with restrictions from their parent blocks.
+Fill blocks at a given level with restrictions from their parent blocks.
 """
 function restrict_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
     @batch for edge in v
@@ -38,7 +38,7 @@ end
 
 
 """
-    Fill all parent blocks with restrict from their children.
+Fill all parent blocks with restrict from their children.
 """
 function restrict_full!(u::ScalarBlockField{D}, conn::Connectivity, bc) where {D}
     for i in length(conn.child):-1:1

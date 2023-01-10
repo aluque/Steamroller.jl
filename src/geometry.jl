@@ -2,7 +2,8 @@
 Generic code for cylindrical / planar geometry.
 =#
 
-""" A geometryr is a type that allows us for example to implement
+"""
+A geometry is a type that allows us for example to implement
 cylindrical symmetry in a generic code without a performance overhead.
 
 Instances of this type must be able to compute from a given grid coordinate and
@@ -20,8 +21,8 @@ struct CylindricalGeometry{D} <: AbstractGeometry end
 
 
 """
-    Compute `r[i + δ/2]/r[i]` around coordinates given by `c`. r[i] is a cell 
-    center; r[i + 1/2] is the cell edge.
+Compute `r[i + δ/2]/r[i]` around coordinates given by `c`. r[i] is a cell 
+center; r[i + 1/2] is the cell edge.
 """
 @inline function factor(::CylindricalGeometry{D}, c, δ) where D
      abs(1 + δ[D] / (2 * c[D] - 1))

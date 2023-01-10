@@ -7,9 +7,9 @@
 
 
 """
-    Builds an efficient boundary condition representation from a list of D
-    tuples with the boundary condition for the lowest and highest value
-    of the axis in that dimension.
+Builds an efficient boundary condition representation from a list of D
+tuples with the boundary condition for the lowest and highest value
+of the axis in that dimension.
 """
 function boundaryconditions(desc::NTuple{D, Tuple{Int, Int}}) where D
     a = ones(Int8, ntuple(_ -> 3, Val(D))...)

@@ -3,7 +3,7 @@
 
 
 """ 
-    Populate a tree with all blocks up to level level.
+Populate a tree with all blocks up to level level.
 """
 function populate!(tree)
     i = 0
@@ -20,9 +20,9 @@ end
 
 
 """
-    Apply the function `f(level, coord, blk)` to each block inside `tree`.
+Apply the function `f(level, coord, blk)` to each block inside `tree`.
 
-    Note: Blocks may run in parallel.
+Note: Blocks may run in parallel.
 """
 function foreachblock(f, tree)
     for layer in tree        
@@ -44,12 +44,9 @@ function foreachblock_serial(f, tree)
 end
 
 
-
-
-
 """
-    Map the function `f`, applied at cell centers, into all blocks of a 
-    `ScalarBlockField` `u`.
+Map the function `f`, applied at cell centers, into all blocks of a 
+`ScalarBlockField` `u`.
 """
 @generated function maptree!(f, u::ScalarBlockField{D}, tree, h=1.0) where {D}
     quote

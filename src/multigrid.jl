@@ -4,11 +4,11 @@
 
 
 """
-    Solve the equation Lu + s b = 0 where L is the 
-    laplace operator (with unit grid spacing). s is the factor at level 1,
-    if you are solving Poisson's equation ∇²u = -ρ/ϵ, set s = h^2/ϵ where
-    h is the grid spacing at level 1.  If you want to use electron and ion
-    densities, use s = eh^2/ϵ.
+Solve the equation Lu + s b = 0 where L is the 
+laplace operator (with unit grid spacing). s is the factor at level 1,
+if you are solving Poisson's equation ∇²u = -ρ/ϵ, set s = h^2/ϵ where
+h is the grid spacing at level 1.  If you want to use electron and ion
+densities, use s = eh^2/ϵ.
 """
 function fmg!(u, b, r, u1, s,
               tree, conn, geometry, bc, lpldisc;
@@ -49,11 +49,11 @@ function fmg!(u, b, r, u1, s,
 end
 
 """
-    Multigrid V-cycle.  Solve the equation Lu + s b = 0 where L is the 
-    laplace operator (with unit grid spacing). s is the factor at level 1,
-    if you are solving Poisson's equation ∇²u = -ρ/ϵ, set s = h^2/ϵ where
-    h is the grid spacing at level 1.  If you want to use electron and ion
-    densities, use s = eh^2/ϵ.
+Multigrid V-cycle.  Solve the equation Lu + s b = 0 where L is the 
+laplace operator (with unit grid spacing). s is the factor at level 1,
+if you are solving Poisson's equation ∇²u = -ρ/ϵ, set s = h^2/ϵ where
+h is the grid spacing at level 1.  If you want to use electron and ion
+densities, use s = eh^2/ϵ.
 """
 function vcycle!(u, b, r, u1, s,
                  tree, conn, geometry, bc, lpldisc;
@@ -105,7 +105,7 @@ end
 
 
 """ 
-    Compute residuals in the subblocks that have been updated with a restriction.
+Compute residuals in the subblocks that have been updated with a restriction.
 """
 function residual_postrestrict_level!(r, u, b, s, layer, v, geometry, lpldisc)
     @batch for edge in v
@@ -117,7 +117,7 @@ function residual_postrestrict_level!(r, u, b, s, layer, v, geometry, lpldisc)
 end
 
 """
-    Compute the parity of a CartesianIndex.
+Compute the parity of a CartesianIndex.
 """
 @inline function parity(I::NTuple{D}) where D
     p = rem(I[1], 2)
@@ -135,18 +135,18 @@ struct FourColors{P1, P2}; end
 
 
 """
-    Apply Red-black Gauss-Seidel in a block.
+Apply Red-black Gauss-Seidel in a block.
 
-    # Parameters 
-    * `u` is the (to be updated) solution guess.
-    * `b` is the source term.
-    * `ω` is an over-relaxation parameter.
-    * `s` is a scaling parameter.
-    * `blkpos` is the block coordinate of the block.
-    * `blk` is the block index.
-    * `ld` is a `LaplacianDiscretization`
-    * `geom` is a geometry.
-    * `parity` should be either Val(0) or Val(1).
+# Parameters 
+* `u` is the (to be updated) solution guess.
+* `b` is the source term.
+* `ω` is an over-relaxation parameter.
+* `s` is a scaling parameter.
+* `blkpos` is the block coordinate of the block.
+* `blk` is the block index.
+* `ld` is a `LaplacianDiscretization`
+* `geom` is a geometry.
+* `parity` should be either Val(0) or Val(1).
 """
 function gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
@@ -201,7 +201,7 @@ end
 
 
 """
-    Apply Gauss-Seidel to all blocks in a layer. 
+Apply Gauss-Seidel to all blocks in a layer. 
 """
 function gauss_seidel_level!(u, b, ω, s, layer, ld, geometry, parity)
     @batch for i in eachindex(layer.pairs)
@@ -212,8 +212,8 @@ end
 
 
 """
-    Apply GS both read and black at a given level `n` times, updating the ghost cells
-    as needed.  This function can be safely iterated
+Apply GS both read and black at a given level `n` times, updating the ghost cells
+as needed.  This function can be safely iterated
 """
 function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
                             lpldisc::LaplacianDiscretization{D, 2}) where D
@@ -265,14 +265,14 @@ end
 
 
 """
-    Compute the residual of applying the laplace operator to a potential
-    field `u` with source field `b` and store the result in `r`.
+Compute the residual of applying the laplace operator to a potential
+field `u` with source field `b` and store the result in `r`.
 
-    The function computes -(Lu/s + b) where L is the discrete laplace operator.
-    `blk` is the block index and `blkpos` is a `CartesianIndex` with the
-    coordinates of `blk` in the block mesh.  Needs a stencil passed as a type 
-    in `stencil_type` and a geometry also as a type in `geom`.
-    `s` is a constant scalar factor.
+The function computes -(Lu/s + b) where L is the discrete laplace operator.
+`blk` is the block index and `blkpos` is a `CartesianIndex` with the
+coordinates of `blk` in the block mesh.  Needs a stencil passed as a type 
+in `stencil_type` and a geometry also as a type in `geom`.
+`s` is a constant scalar factor.
 """
 function residual!(r::ScalarBlockField{D, M, G},
                    u::ScalarBlockField{D, M, G},
@@ -292,9 +292,9 @@ end
 
 
 """
-    Compute the residual only in a given `subblock`.
+Compute the residual only in a given `subblock`.
 
-    See residual! for details on the other parameters
+See residual! for details on the other parameters
 """
 function residual_subblock!(r::ScalarBlockField{D, M, G},
                             u::ScalarBlockField{D, M, G},
@@ -312,7 +312,7 @@ function residual_subblock!(r::ScalarBlockField{D, M, G},
 end
 
 """
-    Compute residuals for all blocks in a layer. 
+Compute residuals for all blocks in a layer. 
 """
 function residual_level!(r, u, b, s, layer, lpldisc, geometry)
     @batch for i in eachindex(layer.pairs)
@@ -323,10 +323,10 @@ end
 
 
 """
-    Compute the rhs of the Laplacian discretization.
+Compute the rhs of the Laplacian discretization.
 
-    This is only neccesary for 4th-order compact discretization where we solve
-    Lu + Rb = 0 (with L a lhs and R an rhs operator).
+This is only neccesary for 4th-order compact discretization where we solve
+Lu + Rb = 0 (with L a lhs and R an rhs operator).
 """
 function rhs!(b1::ScalarBlockField{D, M, G},
               b::ScalarBlockField{D, M, G},
@@ -345,7 +345,7 @@ end
 
 
 """
-    Compute rhs for all blocks in a layer. 
+Compute rhs for all blocks in a layer. 
 """
 function rhs_level!(b1, b, layer, ld, geometry)
     @batch for i in eachindex(layer.pairs)
