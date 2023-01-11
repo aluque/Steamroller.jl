@@ -265,8 +265,10 @@ function ghostindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
 end
 
 
-""" Return a CartesianIndices for the cells that overlap with ghost from a neighbor at
-    face `face`. """
+""" 
+Return a CartesianIndices for the cells that overlap with ghost from a neighbor at
+face `face`. 
+"""
 function overlapindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
     @assert isface(face)
     
@@ -276,8 +278,8 @@ end
 
 
 """
-    Computes the "mirror" index of `i` mapping non-ghost to ghost (and viceversa).
-    `dir` must be -1 (lowest boundary) or +1 (highest boundary).
+Computes the "mirror" index of `i` mapping non-ghost to ghost (and viceversa).
+`dir` must be -1 (lowest boundary) or +1 (highest boundary).
 """
 function mirrorghost(f::ScalarBlockField{D, M, G}, i::Int, dir) where {D, M, G}
     if dir == -1
@@ -291,9 +293,9 @@ end
 
 
 """
-    Computes the "mirror" index of a range possibly mapping non-ghost to ghost 
-    (and viceversa). `dir` must be -1 (lowest boundary) or +1 (highest boundary)
-    or 0 (no change).
+Computes the "mirror" index of a range possibly mapping non-ghost to ghost 
+(and viceversa). `dir` must be -1 (lowest boundary) or +1 (highest boundary)
+or 0 (no change).
 """
 function mirrorghost(f::ScalarBlockField, r::AbstractRange, dir) 
     r, rev = promote(r, reverse(mirrorghost(f, last(r), dir):mirrorghost(f, first(r), dir)))
@@ -302,7 +304,7 @@ end
 
 
 """
-    Computes the "mirror" indices of CartesianIndices.
+Computes the "mirror" indices of CartesianIndices.
 """
 function mirrorghost(f::ScalarBlockField{D}, ci::CartesianIndices{D},
                      dir::CartesianIndex{D}) where {D}
@@ -311,7 +313,7 @@ end
 
 
 """
-    Copies all blocks in the `layer` from `src` to `dest`
+Copies all blocks in the `layer` from `src` to `dest`
 """
 function copyto!(dest, src, layer::BlockLayer)
     @batch for (_, blk) in layer.pairs
@@ -323,7 +325,7 @@ end
 
 
 """
-    Writes into `dest` the difference `a1` - `a2`.
+Writes into `dest` the difference `a1` - `a2`.
 """
 function diffto!(dest, a1, a2, layer::BlockLayer)
     @batch for (_, blk) in layer.pairs
