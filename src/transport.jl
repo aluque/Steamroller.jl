@@ -82,7 +82,7 @@ end
 
 
 ########################################
-# Interpolation from CWI in he supp. material of Bagheri et al. 2018
+# Interpolation from CWI in the supp. material of Bagheri et al. 2018
 ########################################
 struct CWITransportModel{T, T1, T2, T3} <: AbstractTransportModel
     # These are lookuptables
