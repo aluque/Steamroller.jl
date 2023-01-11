@@ -41,7 +41,12 @@ one level depends on higher levels.  Within each level the order of blocks is no
 `flat` indicates that the operation can performed on blocks at an arbitrary order. This is generally
 more efficient as blocks are divided into bunches and allocated to threads more symetrically.
 """
-macro blocks(ex1, ex2)
+macro blocks(ex1, ex2=nothing)
+    if isnothing(ex2)
+        ex2 = ex1
+        ex1 = :(order=flat)
+    end
+
     ok = @capture(ex1, order=order_)
     if !ok
         error("Two-argument @blocks must receive order=deepfirst or order=flat as first arguments")
@@ -63,6 +68,11 @@ macro blocks(ex1, ex2)
 
     esc(out)
 end
+
+# macro blocks(ex)
+#     macroexpand(__module__, :(@blocks(order=flat, $ex)))
+# end
+
 
 function deepfirst(vars, tree, body)
     symlevel, symcoord, symindex = vars
@@ -91,25 +101,69 @@ function flat(vars, tree, body)
              ($symlevel, $symcoord, $symindex) = nth($tree, $i)
              $body
              end)
-    @show loop
     bloop = macroexpand(@__MODULE__, :(Polyester.@batch(per=thread, $loop)))
     
     return bloop
 end
 
 
-# function blockbased(ex)
-#     ex1 = MacroTools.longdef(ex)
-#     dict = splitdef(ex1)
-#     args = map(splitarg, dict[:args])
-#     nbarg = findfirst(arg -> arg[2] == :BlockData, args)
-#     !isnothing(nbarg) || error("One of the arguments must have type ::BlockData")
+"""
+Define a function that can be used as a kernel that acts on all blocks of a tree.
 
-#     argswithlevel = map(
-#     quote
-#         ex
-#     end
-        
+This macro must operate on the definition of a function that takes as first argument
+a tuple of (tree, level, coord, index) for individual blocks.  The macro then creates an additional
+method of the function that can be invoked with a `::Tree` as first argument and will loop in 
+parallel over all blocks in the tree.
+
+```julia
+@bkernel function kern((tree, level, coord, index), args...)
+    ...
+end
+
+...
+
+kern(tree, args...)
+
+```
+
+Optionally this macro accepts an `order=` parameter.  See the documentation for `@blocks` for
+more detais.
+"""
+macro bkernel(ex, ex2=nothing)
+    if !isnothing(ex2)
+        ex, ex2 = ex2, ex
+    else
+        ex2 = :(order=flat)
+    end
+    
+    isdef(ex) || error("@bkernel must act on a function definition")
+    d = splitdef(ex)
+    args = d[:args]
+
+    if !(@capture(args[1], (t_, l_, c_, i_)))
+        error("To use @bkernel the first argument must be a tuple (tree, level, coord, index)")
+    end
+
+    loop = :(for ($l, $c, $i) in $t
+                 $(d[:name])(($t, $l, $c, $i), $(d[:args][2:end]...); $(d[:kwargs]...))
+             end
+             )
+
+    q = macroexpand(__module__, :(@blocks($ex2, $loop)))
+    rx = :(function $(d[:name])($(t)::Tree, $(d[:args][2:end]...);
+                          $(d[:kwargs]...)) where {$(d[:whereparams]...)}
+           $q
+           end)
+
+    esc(quote
+        $(combinedef(d))
+        $(rx)
+    end)
+end
+
+
+
+
 # end
 
     
