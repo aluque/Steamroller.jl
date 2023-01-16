@@ -371,7 +371,7 @@ function resnorm!(r, b, u, s,
     end
     
 
-    for l in (lmax - 1):-1:1
+    for l in (lmax - 1):-1:1        
         restrict_level!(r, conn.child[l + 1])
     end
 
@@ -384,31 +384,29 @@ function resnorm!(r, b, u, s,
 end
 
 
-""" Compute the electric field in a block. """
-function electric_field!(f::VectorBlockField{D, M, G},
-                         u::ScalarBlockField{D, M, G}, h, blk,
-                         e0) where {D, M, G}
+""" Compute the electric field in a block in `f` and its absolute value in `fabs`. """
+@bkernel function electric_field!((tree, level, coord, blk),
+                                  f::VectorBlockField{D, M, G},
+                                  fabs::ScalarBlockField{D, M, G},
+                                  u::ScalarBlockField{D, M, G}, h,
+                                  e0) where {D, M, G}
+    h /= (1 << (level - 1))
+    
     for d in 1:D
         for I in validindices(f, d)
             I1 = Base.setindex(I, I[d] - 1, d)
             f[I, d, blk] = (u[I1, blk] - u[I, blk]) / h + e0[d]
         end
     end
-end
+    
+    for I in validindices(fabs)
+        f2 = zero(eltype(fabs))
+        for d in 1:D
+            I1 = Base.setindex(I, I[d] + 1, d)
 
-""" Compute the electric field in a level of the tree. """
-function electric_field_level!(f, u, h, layer, e0)
-    @batch for i in eachindex(layer.pairs)
-        (coord, blk) = layer.pairs[i]
-        electric_field!(f, u, h, blk, e0)
+            f2 += (f[I, d, blk] + f[I1, d, blk])^2 / 4
+        end
+        fabs[I, blk] = sqrt(f2)
     end
 end
 
-""" Compute the electric field in a full tree. """
-function electric_field_tree!(f, u, h1, tree, e0)
-    lmax = length(tree)
-    for l in 1:lmax
-        electric_field_level!(f, u, h1, tree[l], e0)
-        h1 = h1 / 2
-    end
-end
