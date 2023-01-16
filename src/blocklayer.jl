@@ -74,10 +74,12 @@ hasblock(layer, coord) = (coord in keys(layer.index))
 """
 Add a block to a block layer `layer` at location `coord` with index `blk`.
 """
-function Base.setindex!(layer::BlockLayer, blk, coord)
-    # Make sure that no duplicated id is added
-    @assert !(coord in keys(layer.index)) "Cannot overwrite existing block"
-    @assert !(blk in keys(layer.coord)) "Cannot overwrite existing block"
+function Base.setindex!(layer::BlockLayer, blk, coord, overwrite=true)
+    if !overwrite
+        # Make sure that no duplicated id is added
+        @assert !(coord in keys(layer.index)) "Cannot overwrite existing block"
+        @assert !(blk in keys(layer.coord)) "Cannot overwrite existing block"
+    end
     
     layer.index[coord] = blk
     layer.coord[blk] = coord

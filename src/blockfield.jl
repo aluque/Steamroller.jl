@@ -16,7 +16,7 @@ struct ScalarBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
     u::A
 
     function ScalarBlockField{D, M, G, T}() where {D, M, G, T}
-        @assert rem(M, 2) == 0 "Block size must be divisible by 2"
+        #@assert rem(M, 2) == 0 "Block size must be divisible by 2"
 
         S = M + 2G
         N = D + 1
@@ -52,7 +52,7 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
         S = M + 2G + 1
         MT = Tuple{ntuple(_ -> S, Val(D))..., D}
         N = D + 2
-        val = MArray{MT, T}[]
+        val = MArray{MT, T, D + 1, D * S^D}[]
         new{D, M, G, T, N, typeof(val)}(val)
     end
 
@@ -67,9 +67,9 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
     end
 end
 
-
-# Most frequently we have to dispatch with D,  D and M or D, M, G so we define shortcuts
 const BlockField = Union{ScalarBlockField, VectorBlockField}
+
+Base.eachindex(v::BlockField) = eachindex(v.u)
 
 getblk(f::BlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
@@ -87,10 +87,10 @@ end
 """
 Creates a series of new blocks returns the final length.
 """
-function newblocks!(f::ScalarBlockField{D, M, G}, n) where {D, M, G}
+function newblocks!(f::ScalarBlockField{D, M, G, T}, n) where {D, M, G, T}
     S = M + 2G
     for i in 1:n
-        z = zero(MArray{NTuple{D, S}, Float64})
+        z = zero(MArray{NTuple{D, S}, T})
         push!(f.u, z)
     end
     return length(f.u)
@@ -99,7 +99,7 @@ end
 """
 Creates a new block and returns its index.
 """
-function newblock!(f::VectorBlockField{D, M, G}) where {D, M, G}
+function newblock!(f::VectorBlockField{D, M, G, T}) where {D, M, G, T}
     S = M + 2G + 1
     MT = Tuple{ntuple(_ -> S, Val(D))..., D}
     
@@ -111,7 +111,7 @@ end
 """
 Creates a series of new blocks returns the final length.
 """
-function newblocks!(f::VectorBlockField{D, M, G}, n) where {D, M, G}
+function newblocks!(f::VectorBlockField{D, M, G, T}, n) where {D, M, G, T}
     S = M + 2G + 1
     MT = Tuple{ntuple(_ -> S, Val(D))..., D}
     for i in 1:n
@@ -127,12 +127,15 @@ end
 Delete block at index `blk` by moving the last block into `blk`
 """
 function Base.deleteat!(f::BlockField, blk)
+    nlast = length(f.u)
     last = pop!(f.u)
 
     # Did we remove the last block?
-    (blk > length(f.u)) && return
+    (blk > length(f.u)) && return 0
 
     f.u[blk] = last
+
+    return nlast
 end
 
 # Helper functions that should reduce to compile-time constants
@@ -184,6 +187,7 @@ function addghost(f::ScalarBlockField{D, M, G}, c::CartesianIndices{D}) where {D
     c .+ G * oneunit(c)
 end
 
+""" Ranges of indices excluding ghost cells. """
 function validindices(f::ScalarBlockField{D, M, G}) where {D, M, G}
     CartesianIndices(ntuple(_ -> G + 1:G + M, Val(D)))
 end

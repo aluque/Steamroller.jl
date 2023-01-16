@@ -26,7 +26,7 @@ end
 
 The loop variables must always be tree in a tuple, for level, coordinate and block index.
 
-Optionally you can specify order=deepfirst or order=flat after the @blocks macro.  For example:
+Optionally you can specify order=[deepfirst|flat|serial] after the @blocks macro.  For example:
 
 ```julia
 @blocks order=deepfirst for (level, coord, blk) in tree
@@ -40,6 +40,10 @@ one level depends on higher levels.  Within each level the order of blocks is no
 
 `flat` indicates that the operation can performed on blocks at an arbitrary order. This is generally
 more efficient as blocks are divided into bunches and allocated to threads more symetrically.
+
+`serial` indicates that the operation should not run in parallel. It also guarantees that deeper
+blocks are processed earlier.
+
 """
 macro blocks(ex1, ex2=nothing)
     if isnothing(ex2)
@@ -62,6 +66,8 @@ macro blocks(ex1, ex2=nothing)
         out = deepfirst(vars, tree, body)
     elseif order == :flat
         out = flat(vars, tree, body)
+    elseif order == :serial
+        out = deepfirst(vars, tree, body, false)
     else
         error("Order $(order) unknown")
     end
@@ -74,14 +80,16 @@ end
 # end
 
 
-function deepfirst(vars, tree, body)
+function deepfirst(vars, tree, body, parallel=true)
     symlevel, symcoord, symindex = vars
 
     inner = :(for ($symcoord, $symindex) in $tree[$symlevel].pairs
             $body
         end)
     
-    binner = macroexpand(@__MODULE__, :(Polyester.@batch(per=thread, $inner)))
+    if parallel
+        inner = macroexpand(@__MODULE__, :(Polyester.@batch(per=thread, $inner)))
+    end
     
     outer = quote
         # Ensure inverse tree enumeration
@@ -144,8 +152,14 @@ macro bkernel(ex, ex2=nothing)
         error("To use @bkernel the first argument must be a tuple (tree, level, coord, index)")
     end
 
+
+    # We must strip the ::Type qualificatios because otherwise the variables may be passed
+    # as abstract types and spoil performance.
+    cargs = map(a -> a isa Symbol ? a : a.args[1], d[:args][2:end])
+    ckwargs = map(a -> a isa Symbol ? a : a.args[1], d[:kwargs][2:end])
+    
     loop = :(for ($l, $c, $i) in $t
-                 $(d[:name])(($t, $l, $c, $i), $(d[:args][2:end]...); $(d[:kwargs]...))
+                $(d[:name])(($t, $l, $c, $i), $(cargs...); $(ckwargs...))
              end
              )
 
@@ -155,10 +169,11 @@ macro bkernel(ex, ex2=nothing)
            $q
            end)
 
-    esc(quote
-        $(combinedef(d))
+    blk = quote
+        Base.@__doc__ $(combinedef(d))
         $(rx)
-    end)
+    end |> esc
+    return blk
 end
 
 

@@ -21,6 +21,32 @@ nblocks(t::Tree) = sum(layer -> length(layer), t)
 
 
 """
+Add a block to the tree at level l, coordinate c and block index blk
+"""
+addblock!(tree, l, c, blk) = setindex!(tree[l], blk, c)
+
+""" 
+Populate a tree with all blocks up to level `level`.
+"""
+function populate!(tree, level)
+    @assert level <= length(tree)
+    i = 0
+
+    for l in 1:level        
+        for c in tree[l].domain
+            i += 1
+            tree[l][c] = i
+        end
+    end
+
+    sync!(tree)
+    return i
+end
+
+
+
+
+"""
 Return a range for blocks of all levels contained in the tree
 """
 iblocks(t::Tree) = 1:nblocks(t)
@@ -74,3 +100,18 @@ function Base.iterate(iter::TreeIterator, state=(1, 1))
 end
 
 Base.length(iter::TreeIterator) = nblocks(iter.tree)
+
+"""
+Check if the block with coordinates `c` at level `lvl` is a leaf (does not have any children)
+"""
+function isleaf(t, lvl, B)
+    for C in subblocks(B)
+        # note that usually the block is always refined completely so we could check only the
+        # existence of the first child.  We check all of them to make this robust to other
+        # refinement schemes.
+        if hasblock(t[lvl + 1], C)
+            return false
+        end
+    end
+    return true
+end
