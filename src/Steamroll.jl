@@ -20,6 +20,7 @@ const BlockIndex = Int
 
 include("mesh.jl")
 include("blocklayer.jl")
+include("tree.jl")
 include("treemacros.jl")
 include("blockfield.jl")
 include("stencil.jl")
