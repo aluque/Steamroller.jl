@@ -62,7 +62,7 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
         S = M + 2G + 1
         MT = Tuple{ntuple(_ -> S, Val(D))..., D}
         N = D + 2
-        val = zeros(MArray{MT, T}, len)
+        val = zeros(MArray{MT, T, D + 1, D * S^D}, len)
         new{D, M, G, T, N, typeof(val)}(val)
     end
 end
@@ -77,9 +77,9 @@ valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
 """
 Creates a new block and returns its index.
 """
-function newblock!(f::ScalarBlockField{D, M, G}) where {D, M, G}
+function newblock!(f::ScalarBlockField{D, M, G, T}) where {D, M, G, T}
     S = M + 2G
-    z = zero(MArray{NTuple{D, S}, Float64})
+    z = zero(MArray{NTuple{D, S}, T})
     push!(f.u, z)
     return length(f.u)
 end
