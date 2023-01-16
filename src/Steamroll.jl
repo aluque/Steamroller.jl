@@ -32,6 +32,7 @@ include("geometry.jl")
 include("laplacian.jl")
 include("multigrid.jl")
 include("transport.jl")
+include("refinement.jl")
 include("fluid.jl")
 include("util.jl")
 
