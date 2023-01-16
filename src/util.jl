@@ -31,16 +31,15 @@ end
 Map the function `f`, applied at cell centers, into all blocks of a 
 `ScalarBlockField` `u`.
 """
-@generated function maptree!(f, u::ScalarBlockField{D}, tree, h=1.0) where {D}
+@generated function maptree1!(f, u::ScalarBlockField{D}, tree, h=1.0) where {D}
     quote
         for layer in tree
             for (coord, blk) in layer.index
                 l = layer.level
-                
                 centers = cell_centers(coord, l, sidelength(u), h)
                 for I in localindices(u)
                     @nexprs $D d -> (r_d = centers[d][I[d]])
-
+                    
                     v = u[blk]
                     #v[addghost(u, I)] = f(r...)
                     
@@ -52,3 +51,19 @@ Map the function `f`, applied at cell centers, into all blocks of a
         end
     end
 end
+
+
+function maptree!(f::F, u::ScalarBlockField{D}, tree, h=1.0) where {D, F}
+    @blocks order=flat for (l, coord, blk) in tree
+    # for layer in tree
+    #      l = layer.level
+    #     for (coord, blk) in layer.pairs
+        centers = cell_centers(coord, l, sidelength(u), h)
+        for I in localindices(u)
+            r = ntuple(d -> centers[d][I[d]], Val(D))
+            v = u[blk]
+            u.u[blk][Tuple(addghost(u, I))...] = f(r...)
+        end
+    end
+end
+
