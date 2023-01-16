@@ -2,23 +2,6 @@
 =#
 
 
-""" 
-Populate a tree with all blocks up to level level.
-"""
-function populate!(tree)
-    i = 0
-    for layer in tree
-        for c in layer.domain
-            i += 1
-            layer[c] = i
-        end
-    end
-
-    sync!(tree)
-    return i
-end
-
-
 """
 Apply the function `f(level, coord, blk)` to each block inside `tree`.
 
