@@ -2,7 +2,8 @@
    Routines to handle fields stored in block decks.
 =#
 
-greetme() = "Hello World hello now"
+abstract type AbstractBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}; end
+
 
 """
 A block field stored in a series of MArrays
@@ -12,7 +13,7 @@ Encoded in a type for performance reasons.
 `G`: Number of ghost cells
 `A`: MArray type
 """
-struct ScalarBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
+struct ScalarBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A}#<: AbstractVectorOfArray{T, N, A}
     u::A
 
     function ScalarBlockField{D, M, G, T}() where {D, M, G, T}
@@ -42,7 +43,7 @@ Each MArray corresponding to a block has dimensions
 Usually we use this to store a vector field evaluated at cell
 interfaces and related to a gradient of a scalar field.    
 """
-struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
+struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A} #<: AbstractVectorOfArray{T, N, A}
     # We cannot construct the type here so it must be parametric
     u::A
 
@@ -67,11 +68,7 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
     end
 end
 
-const BlockField = Union{ScalarBlockField, VectorBlockField}
-
-Base.eachindex(v::BlockField) = eachindex(v.u)
-
-getblk(f::BlockField, blk) = f.u[blk]
+getblk(f::AbstractBlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
 
 """
@@ -126,7 +123,7 @@ end
 """
 Delete block at index `blk` by moving the last block into `blk`
 """
-function Base.deleteat!(f::BlockField, blk)
+function Base.deleteat!(f::AbstractBlockField, blk)
     nlast = length(f.u)
     last = pop!(f.u)
 
@@ -139,8 +136,7 @@ function Base.deleteat!(f::BlockField, blk)
 end
 
 # Helper functions that should reduce to compile-time constants
-Base.eltype(::ScalarBlockField{D, M, G, T, A}) where {D, M, G, T, A} = T
-Base.eltype(::VectorBlockField{D, M, G, T, A}) where {D, M, G, T, A} = T
+Base.eltype(::AbstractBlockField{D, M, G, T}) where {D, M, G, T} = T
 
 """ Return the size of each block (not counting ghost cells). """
 blksize(::ScalarBlockField{D, M}) where {D, M} = ntuple(_ -> M, Val(D))
