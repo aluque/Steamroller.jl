@@ -30,9 +30,14 @@ struct ScalarBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
 
         S = M + 2G
         N = D + 1
-        val = [zero(MArray{NTuple{D, S}, Float64}) for i in 1:len]
+        val = [zero(MArray{NTuple{D, S}, T}) for i in 1:len]
         new{D, M, G, T, N, typeof(val)}(val)
     end
+
+    function ScalarBlockField{D, M, G, T, N, A}(u::A) where {D, M, G, T, N, A}
+        new{D, M, G, T, N, A}(u)
+    end
+
 end
 
 """
@@ -66,10 +71,20 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
         val = zeros(MArray{MT, T, D + 1, D * S^D}, len)
         new{D, M, G, T, N, typeof(val)}(val)
     end
+
+    function VectorBlockField{D, M, G, T, N, A}(u::A) where {D, M, G, T, N, A}
+        new{D, M, G, T, N, A}(u)
+    end
+
 end
 
 getblk(f::AbstractBlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
+function Base.zero(f::ScalarBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A}
+    S = M + 2G
+    val = [zero(MArray{NTuple{D, S}, T}) for i in 1:length(f)]
+    return ScalarBlockField{D, M, G, T, N, A}(val)    
+end
 
 """
 Creates a new block and returns its index.
@@ -137,6 +152,8 @@ end
 
 # Helper functions that should reduce to compile-time constants
 Base.eltype(::AbstractBlockField{D, M, G, T}) where {D, M, G, T} = T
+Base.similar(b::ScalarBlockField{D, M, G, T}) where {D, M, G, T} = ScalarBlockField{D, M, G, T}(length(b.u))
+Base.similar(b::VectorBlockField{D, M, G, T}) where {D, M, G, T} = VectorBlockField{D, M, G, T}(length(b.u))
 
 """ Return the size of each block (not counting ghost cells). """
 blksize(::ScalarBlockField{D, M}) where {D, M} = ntuple(_ -> M, Val(D))
@@ -335,3 +352,196 @@ function diffto!(dest, a1, a2, layer::BlockLayer)
         @turbo destblk .= a1blk .- a2blk
     end
 end
+
+# Now we implement the broadcasting machinery.  This is because we want the BlockField types
+# to be compatible with DifferentialEquations.jl in-place methods, which rely on broadcasting.
+# We do not use the default broadcasting because we want two features:
+# 1. Multi-threading over blocks.
+# 2. Updating only the valid cells inside each block (not the ghost cells).
+# To keep standard broadcasting also available (e.g. for initialization) we wrap the type
+# into a new type.
+# So far we only allow this for scalar block fields.  It's unclear if it is needed for vector fields
+# and there are some implementation difficulties with the size of the valid area.
+import .Broadcast: Broadcasted, BroadcastStyle, DefaultArrayStyle
+
+struct StrippedBroadcastStyle <: BroadcastStyle; end
+
+# DiffEq.jl forces us to define this as an AbstractArray.
+struct StrippedBlockField{D, M, G, T, N, A} <: AbstractVector{A}
+    bf::ScalarBlockField{D, M, G, T, N, A}
+
+    function StrippedBlockField(bf::ScalarBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A}
+        new{D, M, G, T, N, A}(bf)
+    end
+end
+
+function Base.show(io::IO, mime::MIME"text/plain", v::StrippedBlockField)
+    println(io, string(typeof(v)) * " with content:")
+    Base.show(io, mime, v.bf)
+end
+
+Base.Broadcast.BroadcastStyle(::Type{StrippedBlockField{D, M, G, T, N, A}}) where {D, M, G, T, N, A} = StrippedBroadcastStyle()
+Base.Broadcast.BroadcastStyle(::StrippedBroadcastStyle, ::T2) where {T2 <: BroadcastStyle} = StrippedBroadcastStyle()
+Base.broadcastable(v::StrippedBlockField) = v
+# Base.axes(::StrippedBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A} = ntuple(_ -> Base.OneTo(M), Val(D))
+Base.axes(v::StrippedBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A} = Base.OneTo(length(v.bf))
+Base.ndims(::StrippedBlockField{D, M}) where {D, M} = 1
+Base.ndims(::Type{StrippedBlockField{D, M}}) where {D, M} = 1
+
+Base.length(v::StrippedBlockField) = length(v.bf)
+@inline Base.size(v::StrippedBlockField) = (length(v),)
+Base.eltype(v::StrippedBlockField) = Base.eltype(v.bf.u)
+Base.copy(v::StrippedBlockField) = StrippedBlockField(copy(v.bf))
+
+function Base.zero(v::StrippedBlockField)
+    z = Base.similar(v)
+    z .= false
+    return z
+end
+
+function Base.zero(T::Type{Z}, v::StrippedBlockField) where Z
+    z = Base.similar(v, T)
+    z .= false
+    return z
+end
+
+function Base.getindex(v::StrippedBlockField, inds...)
+    Base.getindex(v.bf, inds...)
+end
+
+Base.@propagate_inbounds Base.setindex!(v::StrippedBlockField, value, i::Int) = Base.setindex!(v.bf, value, i)
+Base.@propagate_inbounds Base.setindex!(v::StrippedBlockField, value, inds...) = Base.setindex!(v.bf, value, inds...)
+
+
+function Base.similar(v::StrippedBlockField{D, M, G, T})::StrippedBlockField{D, M, G, T} where {D, M, G, T, N, A}
+
+    bf = ScalarBlockField{D, M, G, T}(length(v.bf.u))
+    return StrippedBlockField(bf)
+end
+
+function Base.similar(v::StrippedBlockField{D, M, G, T, N, A}, ::Type{T2})::StrippedBlockField{D, M, G, T2, N, A} where {D, M, G, T, N, A, T2}
+
+    bf = ScalarBlockField{D, M, G, T2}(length(v.bf.u))
+   return StrippedBlockField(bf)
+end
+
+function Base.copy(bc::Broadcasted{StrippedBroadcastStyle})
+    bc = Broadcast.flatten(bc)
+    sbf = find_sbf(bc)
+    x = similar(sbf)
+    Base.copyto!(x, bc)
+    x
+end
+
+find_sbf(bc::Base.Broadcast.Broadcasted) = find_sbf(bc.args)
+find_sbf(args::Tuple) = find_sbf(find_sbf(args[1]), Base.tail(args))
+find_sbf(x) = x
+find_sbf(::Tuple{}) = nothing
+find_sbf(a::StrippedBlockField, rest) = a
+find_sbf(::Any, rest) = find_sbf(rest)
+
+# function Base.copyto!(dest::StrippedBlockField, src::StrippedBlockField)
+#     #@batch
+#     alc = @allocated for i in eachindex(dest.bf.u)
+#         Base.copyto!(valid(dest.bf, i), valid(src.bf, i))
+#         #Base.copyto!(dest.bf[i], src.bf[i])
+#     end
+#     @show alc
+#     dest
+# end
+
+function Base.copyto!(dest::StrippedBlockField, bc::Broadcasted{StrippedBroadcastStyle})
+    # Broadcast style of the underlying block container
+    bc = Broadcast.flatten(bc)
+    #@batch
+    for i in eachindex(dest.bf.u)
+        T = typeof(BroadcastStyle(eltype(dest.bf.u)))
+        Base.copyto!(valid(dest.bf, i), mapbroadcast(T, i, bc))
+        #Base.copyto!(dest.bf[i], mapbroadcast(T, i, bc))
+    end
+    dest
+end
+
+function Base.copyto!(dest::StrippedBlockField, bc::Broadcasted{DefaultArrayStyle{D}}) where D
+    # Broadcast style of the underlying block container
+    bc = Broadcast.flatten(bc)
+    #@batch
+    for i in eachindex(dest.bf.u)
+        Base.copyto!(valid(dest.bf, i), bc)
+        #Base.copyto!(dest.bf[i], bc)
+    end
+    dest
+end
+
+
+"""
+Traverses a tree of Broadcasted elements and changes each Broadcast type with `T` over element `i`
+of the underlying ScalarBlockField. """
+@inline function mapbroadcast(T::Type{Z}, i, x::Broadcasted{StrippedBroadcastStyle}) where {Z}
+    Broadcasted{T}(x.f, mapbroadcast(T, i, x.args))
+end
+
+@inline mapbroadcast(T::Type{Z}, i, args::Tuple{}) where {Z} = ()
+@inline function mapbroadcast(T::Type{Z}, i, args::Tuple) where {Z}
+    (mapbroadcast(T, i, args[1]), mapbroadcast(T, i, Base.tail(args))...)
+end
+@inline mapbroadcast(T, i, x::StrippedBlockField) = valid(x.bf, i)
+#mapbroadcast(T, i, x::StrippedBlockField) = x.bf[i]
+@inline mapbroadcast(T, i, x::Any) = x
+
+
+
+Base.sizehint!(v::StrippedBlockField, i) = sizehint!(v.bf, i)
+
+# Need this for ODE_DEFAULT_UNSTABLE_CHECK from DiffEqBase to work properly
+@inline Base.any(f, v::StrippedBlockField) = any(any(f, v.bf[i]) for i in eachindex(v.bf))
+@inline Base.all(f, v::StrippedBlockField) = all(all(f, v.bf[i]) for i in eachindex(v.bf))
+@inline function Base.any(f::Function, v::StrippedBlockField)
+    any(any(f, v.bf[i]) for i in eachindex(v.bf))
+end
+@inline function Base.all(f::Function, v::StrippedBlockField)
+    all(all(f, v.bf[i]) for i in eachindex(v.bf))
+end
+
+# conversion tools
+Base.vec(v::StrippedBlockField) = vec(convert(Array, v.bf)) # Allocates
+
+
+# IGNORE THIS.
+# We inplement interfaces for the BlockField structs that allow manipulation inside DiffEq.jl
+# methods. These include easy indexing, broadcasting...  We mostly follow the VectorOfArray 
+# implementation in RecursiveArrayTools but with modifications to e.g. manipulate only valid
+# cells.
+
+# @inline Base.firstindex(BF::AbstractBlockField) = firstindex(BF.u)
+# @inline Base.lastindex(BF::AbstractBlockField) = lastindex(BF.u)
+# @inline Base.length(BF::AbstractBlockField) = length(BF.u)
+# @inline Base.eachindex(BF::AbstractBlockField) = Base.OneTo(length(BF))
+# @inline Base.IteratorSize(BF::AbstractBlockField) = Base.HasLength()
+
+# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField{D, M, G, T}, I::Int) where {D, M, G, T} = BF.u[I]
+# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField, I::Colon) = BF.u[I]
+# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField{D, M, G, T}, I::AbstractArray{Int}) = AbstractBlockField{D, M, G, T}(VA.u[I])
+
+# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField, i::Int,::Colon) = [BF.u[j][i] for j in 1:length(BF)]
+# Base.@propagate_inbounds function Base.getindex(BF::AbstractBlockField, ii::CartesianIndex)
+#     ti = Tuple(ii)
+#     i = last(ti)
+#     jj = CartesianIndex(Base.front(ti))
+#     return BF.u[i][jj]
+# end
+# Base.@propagate_inbounds Base.setindex!(BF::AbstractBlockField, v, I::Int) = BF.u[I] = v
+# Base.@propagate_inbounds Base.setindex!(BF::AbstractBlockField, v, I::Colon) = BF.u[I] = v
+# Base.@propagate_inbounds Base.setindex!(BF::AbstractBlockField, v, I::AbstractArray{Int}) = BF.u[I] = v
+# Base.@propagate_inbounds function Base.setindex!(BF::AbstractBlockField, v, i::Int,::Colon)
+#   for j in 1:length(BF)
+#     BF.u[j][i] = v[j]
+#   end
+#   return v
+# end
+# Base.@propagate_inbounds function Base.setindex!(BF::AbstractBlockField, x, ii::CartesianIndex)
+#     ti = Tuple(ii)
+#     i = last(ti)
+#     jj = CartesianIndex(Base.front(ti))
+#     return BF.u[i][jj] = x
+# end
