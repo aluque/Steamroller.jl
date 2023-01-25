@@ -363,69 +363,106 @@ end
 # So far we only allow this for scalar block fields.  It's unclear if it is needed for vector fields
 # and there are some implementation difficulties with the size of the valid area.
 import .Broadcast: Broadcasted, BroadcastStyle, DefaultArrayStyle
+import DiffEqBase
 
 struct StrippedBroadcastStyle <: BroadcastStyle; end
 
-# DiffEq.jl forces us to define this as an AbstractArray.
-struct StrippedBlockField{D, M, G, T, N, A} <: AbstractVector{A}
-    bf::ScalarBlockField{D, M, G, T, N, A}
+struct StrippedBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}
+    u::A
 
     function StrippedBlockField(bf::ScalarBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A}
-        new{D, M, G, T, N, A}(bf)
+        new{D, M, G, T, N, A}(bf.u)
     end
+
+    function StrippedBlockField{D, M, G, T, N, A}(u::A) where {D, M, G, T, N, A}
+        new{D, M, G, T, N, A}(u)
+    end
+
 end
 
-function Base.show(io::IO, mime::MIME"text/plain", v::StrippedBlockField)
-    println(io, string(typeof(v)) * " with content:")
-    Base.show(io, mime, v.bf)
+""" Ranges of indices excluding ghost cells. """
+function validindices(f::StrippedBlockField{D, M, G}) where {D, M, G}
+    CartesianIndices(ntuple(_ -> G + 1:G + M, Val(D)))
 end
+valid(f::StrippedBlockField, blk) = view(f.u[blk], validindices(f))
+
+@inline DiffEqBase.recursive_length(f::StrippedBlockField) = prod(size(f))
+
+Base.@propagate_inbounds function Base.getindex(v::StrippedBlockField,
+                                                I::Int)
+    valid(v, I)
+end
+
+Base.@propagate_inbounds function Base.getindex(v::StrippedBlockField,
+                                                I::Int...) where {T, N}
+    valid(v, I[end])[Base.front(I)...]
+end
+
+Base.@propagate_inbounds function Base.getindex(v::StrippedBlockField,
+                                                ii::CartesianIndex)
+    ti = Tuple(ii)
+    i = last(ti)
+    jj = CartesianIndex(Base.front(ti))
+    return valid(v, i)[jj]
+end
+
+Base.@propagate_inbounds function Base.setindex!(v::StrippedBlockField, y,
+                                                 I::Int)
+    Base.copyto!(valid(v, I), y)
+end
+
+Base.@propagate_inbounds function Base.setindex!(v::StrippedBlockField, y,
+                                                 ii::CartesianIndex)
+    ti = Tuple(ii)
+    i = last(ti)
+    jj = CartesianIndex(Base.front(ti))
+    valid(v, i)[jj] = y
+end
+
+Base.@propagate_inbounds function Base.setindex!(v::StrippedBlockField, y,
+                                                 I::Int...)
+    valid(v, I[end])[Base.front(I)...] = y
+end
+
+@inline Base.size(v::StrippedBlockField) = (size(validindices(v))..., length(v.u))
+
+function Base.zero(f::StrippedBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A}
+    S = M + 2G
+    val = [zero(MArray{NTuple{D, S}, T}) for i in 1:length(f)]
+    return StrippedBlockField{D, M, G, T, N, A}(val)    
+end
+
+@inline function Base.similar(v::StrippedBlockField{D, M, G, T1, N, A}, ::Type{T} = eltype(v)) where {D, M, G, T1, N, A, T}
+   u = [similar(v.u[i], T) for i in eachindex(v)]
+    StrippedBlockField{D, M, G, T, N, typeof(u)}(u)
+end
+
+
+# Need this for ODE_DEFAULT_UNSTABLE_CHECK from DiffEqBase to work properly
+@inline Base.any(f, v::StrippedBlockField) = any(any(f, valid(v, i)) for i in eachindex(v))
+@inline Base.all(f, v::StrippedBlockField) = all(all(f, valid(v, i)) for i in eachindex(v))
+@inline function Base.any(f::Function, v::StrippedBlockField)
+    any(any(f, valid(v, i)) for i in eachindex(v))
+end
+@inline function Base.all(f::Function, v::StrippedBlockField)
+    all(all(f, valid(v, i)) for i in eachindex(v))
+end
+@inline Base.maximum(v::StrippedBlockField) = maximum(i -> maximum(valid(v, i)), eachindex(v))
+@inline Base.minimum(v::StrippedBlockField) = minimum(i -> minimum(valid(v, i)), eachindex(v))
+@inline Base.maximum(f, v::StrippedBlockField) = maximum(i -> maximum(f, valid(v, i)), eachindex(v))
+@inline Base.minimum(f, v::StrippedBlockField) = minimum(i -> minimum(f, valid(v, i)), eachindex(v))
+
+function RecursiveArrayTools.recursivecopy(v::StrippedBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A}
+    StrippedBlockField{D, M, G, T, N, A}(copy.(v.u))
+end
+
 
 Base.Broadcast.BroadcastStyle(::Type{StrippedBlockField{D, M, G, T, N, A}}) where {D, M, G, T, N, A} = StrippedBroadcastStyle()
 Base.Broadcast.BroadcastStyle(::StrippedBroadcastStyle, ::T2) where {T2 <: BroadcastStyle} = StrippedBroadcastStyle()
 Base.broadcastable(v::StrippedBlockField) = v
 # Base.axes(::StrippedBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A} = ntuple(_ -> Base.OneTo(M), Val(D))
-Base.axes(v::StrippedBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A} = Base.OneTo(length(v.bf))
-Base.ndims(::StrippedBlockField{D, M}) where {D, M} = 1
-Base.ndims(::Type{StrippedBlockField{D, M}}) where {D, M} = 1
 
-Base.length(v::StrippedBlockField) = length(v.bf)
-@inline Base.size(v::StrippedBlockField) = (length(v),)
-Base.eltype(v::StrippedBlockField) = Base.eltype(v.bf.u)
-Base.copy(v::StrippedBlockField) = StrippedBlockField(copy(v.bf))
-
-function Base.zero(v::StrippedBlockField)
-    z = Base.similar(v)
-    z .= false
-    return z
-end
-
-function Base.zero(T::Type{Z}, v::StrippedBlockField) where Z
-    z = Base.similar(v, T)
-    z .= false
-    return z
-end
-
-function Base.getindex(v::StrippedBlockField, inds...)
-    Base.getindex(v.bf, inds...)
-end
-
-Base.@propagate_inbounds Base.setindex!(v::StrippedBlockField, value, i::Int) = Base.setindex!(v.bf, value, i)
-Base.@propagate_inbounds Base.setindex!(v::StrippedBlockField, value, inds...) = Base.setindex!(v.bf, value, inds...)
-
-
-function Base.similar(v::StrippedBlockField{D, M, G, T})::StrippedBlockField{D, M, G, T} where {D, M, G, T, N, A}
-
-    bf = ScalarBlockField{D, M, G, T}(length(v.bf.u))
-    return StrippedBlockField(bf)
-end
-
-function Base.similar(v::StrippedBlockField{D, M, G, T, N, A}, ::Type{T2})::StrippedBlockField{D, M, G, T2, N, A} where {D, M, G, T, N, A, T2}
-
-    bf = ScalarBlockField{D, M, G, T2}(length(v.bf.u))
-   return StrippedBlockField(bf)
-end
-
-function Base.copy(bc::Broadcasted{StrippedBroadcastStyle})
+function Base.copy(bc::Broadcasted{<:StrippedBroadcastStyle})
     bc = Broadcast.flatten(bc)
     sbf = find_sbf(bc)
     x = similar(sbf)
@@ -454,10 +491,9 @@ function Base.copyto!(dest::StrippedBlockField, bc::Broadcasted{StrippedBroadcas
     # Broadcast style of the underlying block container
     bc = Broadcast.flatten(bc)
     #@batch
-    for i in eachindex(dest.bf.u)
-        T = typeof(BroadcastStyle(eltype(dest.bf.u)))
-        Base.copyto!(valid(dest.bf, i), mapbroadcast(T, i, bc))
-        #Base.copyto!(dest.bf[i], mapbroadcast(T, i, bc))
+    for i in eachindex(dest.u)
+        T = typeof(BroadcastStyle(eltype(dest.u)))
+        Base.copyto!(valid(dest, i), mapbroadcast(T, i, bc))
     end
     dest
 end
@@ -466,8 +502,8 @@ function Base.copyto!(dest::StrippedBlockField, bc::Broadcasted{DefaultArrayStyl
     # Broadcast style of the underlying block container
     bc = Broadcast.flatten(bc)
     #@batch
-    for i in eachindex(dest.bf.u)
-        Base.copyto!(valid(dest.bf, i), bc)
+    for i in eachindex(dest.u)
+        Base.copyto!(valid(dest, i), bc)
         #Base.copyto!(dest.bf[i], bc)
     end
     dest
@@ -485,63 +521,9 @@ end
 @inline function mapbroadcast(T::Type{Z}, i, args::Tuple) where {Z}
     (mapbroadcast(T, i, args[1]), mapbroadcast(T, i, Base.tail(args))...)
 end
-@inline mapbroadcast(T, i, x::StrippedBlockField) = valid(x.bf, i)
+@inline mapbroadcast(T, i, x::StrippedBlockField) = valid(x, i)
 #mapbroadcast(T, i, x::StrippedBlockField) = x.bf[i]
 @inline mapbroadcast(T, i, x::Any) = x
 
 
 
-Base.sizehint!(v::StrippedBlockField, i) = sizehint!(v.bf, i)
-
-# Need this for ODE_DEFAULT_UNSTABLE_CHECK from DiffEqBase to work properly
-@inline Base.any(f, v::StrippedBlockField) = any(any(f, v.bf[i]) for i in eachindex(v.bf))
-@inline Base.all(f, v::StrippedBlockField) = all(all(f, v.bf[i]) for i in eachindex(v.bf))
-@inline function Base.any(f::Function, v::StrippedBlockField)
-    any(any(f, v.bf[i]) for i in eachindex(v.bf))
-end
-@inline function Base.all(f::Function, v::StrippedBlockField)
-    all(all(f, v.bf[i]) for i in eachindex(v.bf))
-end
-
-# conversion tools
-Base.vec(v::StrippedBlockField) = vec(convert(Array, v.bf)) # Allocates
-
-
-# IGNORE THIS.
-# We inplement interfaces for the BlockField structs that allow manipulation inside DiffEq.jl
-# methods. These include easy indexing, broadcasting...  We mostly follow the VectorOfArray 
-# implementation in RecursiveArrayTools but with modifications to e.g. manipulate only valid
-# cells.
-
-# @inline Base.firstindex(BF::AbstractBlockField) = firstindex(BF.u)
-# @inline Base.lastindex(BF::AbstractBlockField) = lastindex(BF.u)
-# @inline Base.length(BF::AbstractBlockField) = length(BF.u)
-# @inline Base.eachindex(BF::AbstractBlockField) = Base.OneTo(length(BF))
-# @inline Base.IteratorSize(BF::AbstractBlockField) = Base.HasLength()
-
-# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField{D, M, G, T}, I::Int) where {D, M, G, T} = BF.u[I]
-# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField, I::Colon) = BF.u[I]
-# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField{D, M, G, T}, I::AbstractArray{Int}) = AbstractBlockField{D, M, G, T}(VA.u[I])
-
-# Base.@propagate_inbounds Base.getindex(BF::AbstractBlockField, i::Int,::Colon) = [BF.u[j][i] for j in 1:length(BF)]
-# Base.@propagate_inbounds function Base.getindex(BF::AbstractBlockField, ii::CartesianIndex)
-#     ti = Tuple(ii)
-#     i = last(ti)
-#     jj = CartesianIndex(Base.front(ti))
-#     return BF.u[i][jj]
-# end
-# Base.@propagate_inbounds Base.setindex!(BF::AbstractBlockField, v, I::Int) = BF.u[I] = v
-# Base.@propagate_inbounds Base.setindex!(BF::AbstractBlockField, v, I::Colon) = BF.u[I] = v
-# Base.@propagate_inbounds Base.setindex!(BF::AbstractBlockField, v, I::AbstractArray{Int}) = BF.u[I] = v
-# Base.@propagate_inbounds function Base.setindex!(BF::AbstractBlockField, v, i::Int,::Colon)
-#   for j in 1:length(BF)
-#     BF.u[j][i] = v[j]
-#   end
-#   return v
-# end
-# Base.@propagate_inbounds function Base.setindex!(BF::AbstractBlockField, x, ii::CartesianIndex)
-#     ti = Tuple(ii)
-#     i = last(ti)
-#     jj = CartesianIndex(Base.front(ti))
-#     return BF.u[i][jj] = x
-# end
