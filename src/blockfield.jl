@@ -353,8 +353,7 @@ function diffto!(dest, a1, a2, layer::BlockLayer)
     end
 end
 
-# Now we implement the broadcasting machinery.  This is because we want the BlockField types
-# to be compatible with DifferentialEquations.jl in-place methods, which rely on broadcasting.
+# Now we implement the broadcasting machinery.  
 # We do not use the default broadcasting because we want two features:
 # 1. Multi-threading over blocks.
 # 2. Updating only the valid cells inside each block (not the ghost cells).
@@ -362,8 +361,9 @@ end
 # into a new type.
 # So far we only allow this for scalar block fields.  It's unclear if it is needed for vector fields
 # and there are some implementation difficulties with the size of the valid area.
+# TODO: Perhaps it would be a good idea to reimplement everything to use this type
+# but it would take a while to re-write.
 import .Broadcast: Broadcasted, BroadcastStyle, DefaultArrayStyle
-import DiffEqBase
 
 struct StrippedBroadcastStyle <: BroadcastStyle; end
 
@@ -386,7 +386,9 @@ function validindices(f::StrippedBlockField{D, M, G}) where {D, M, G}
 end
 valid(f::StrippedBlockField, blk) = view(f.u[blk], validindices(f))
 
-@inline DiffEqBase.recursive_length(f::StrippedBlockField) = prod(size(f))
+# This is needed if we ever want to use DifferentialEquations.jl
+#import DiffEqBase
+#@inline DiffEqBase.recursive_length(f::StrippedBlockField) = prod(size(f))
 
 Base.@propagate_inbounds function Base.getindex(v::StrippedBlockField,
                                                 I::Int)
