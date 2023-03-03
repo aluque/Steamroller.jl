@@ -5,10 +5,12 @@ Routines for solving the fluid equations.
 @bkernel function derivs!((tree, level, blkpos, blk),
                           dne::ScalarBlockField{D, M, G},
                           ne::ScalarBlockField{D, M, G},
-                          e::VectorBlockField{D, M, G}, h,
-                          trans, geom) where {D, M, G}
+                          e::VectorBlockField{D, M, G},
+                          eabs::ScalarBlockField{D, M, G},
+                          h, trans, geom) where {D, M, G}
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
+    dne[blk] .= 0
     
     for d in 1:D
         for I in validindices(e, d)
@@ -21,31 +23,26 @@ Routines for solving the fluid equations.
             
             ed = e[I, d, blk]
 
-            # Interpolate the electric field into the face location
-            eint2 = ntuple(d1 -> d1 == d ? ed^2 : avgvector(e[blk], d1, I, D)^2, Val(D))
-            
-            #eabs = sqrt(sum(eint2))
-            eabs = 3e6
-            μ = mobility(trans, eabs)
-            diff = diffusion(trans, eabs)
+            eabs1 = (eabs[I, blk] + eabs[I1, blk]) / 2
+            μ = mobility(trans, eabs1)
+            diff = diffusion(trans, eabs1)
             
             v = -ed * μ
             sv = signbit(v) ? -1 : 1
-
+            
             # The downstream, upstream and twice-upstream indices
             Id  = Base.setindex(I, I[d] + div(sv - 1, 2), d)
             Iu  = Base.setindex(I, I[d] + div(-sv - 1, 2), d)
             Iu2 = Base.setindex(I, I[d] + div(-3sv - 1, 2), d)
-
-            #theta = (ne[Iu, blk] - ne[Iu2, blk]) / (ne[Id, blk] - ne[Iu, blk])
+            
             F = v * (ne[Iu, blk] + koren_limited(ne[Iu, blk] - ne[Iu2, blk],
                                                  ne[Id, blk] - ne[Iu, blk]))            
-
+            
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h
 
             dne[I, blk]  += factor(geom, J, I1 - I) * F / h
-            dne[I, blk]  -= factor(geom, J1, I - I1) * F / h 
+            dne[I1, blk] -= factor(geom, J1, I - I1) * F / h 
         end
     end    
 end

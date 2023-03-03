@@ -28,7 +28,7 @@ addblock!(tree, l, c, blk) = setindex!(tree[l], blk, c)
 """ 
 Populate a tree with all blocks up to level `level`.
 """
-function populate!(tree, level)
+function populate!(tree, level=length(tree))
     @assert level <= length(tree)
     i = 0
 
