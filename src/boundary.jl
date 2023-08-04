@@ -5,6 +5,11 @@
   is ignored.
 =#
 
+"""
+A boundary condition that just extrapolates the value in all boundaries.  This is used e.g.
+for the eabs field.
+"""
+struct ExtrapolateConst; end
 
 """
 Builds an efficient boundary condition representation from a list of D
@@ -26,4 +31,8 @@ end
 
 function getbc(bc::SArray{NTuple{D, 3}, Int8}, face::CartesianIndex{D}) where D
     return bc[ntuple(d -> 2 + face[d], Val(D))...] 
+end
+
+function getbc(::ExtrapolateConst, face)
+    return 1
 end
