@@ -135,6 +135,7 @@ function fill_ghost!(u, l, conn, bc)
     fill_ghost_copy!(u, conn.neighbor[l])
     fill_ghost_bnd!(u, conn.boundary[l], bc)
     fill_ghost_interp!(u, conn.refboundary[l])
+    #fill_ghost_conserv!(u, conn.refboundary[l])
 end
 
 
@@ -208,11 +209,11 @@ end
 Fill ghost cells by interpolating from parent blocks at refinement 
 boundaries.
 """
-function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
+function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}, method=InterpLinear()) where {D}
     @batch for edge in v
         src = u[edge.coarse]
         dest = u[edge.fine]
-        interp!(dest, ghostindices(u, edge.face),
+        interp!(method, dest, ghostindices(u, edge.face),
                 src, subblockbnd(u, edge.subblock, -edge.face))
     end
 end
@@ -229,8 +230,94 @@ function fill_ghost_interp!(u::ScalarBlockField{D}, conn::Connectivity) where {D
 end
 
 
+"""
+Fill ghost cells according to the conservative method described by Teunissen 2017.
+
+`fine` is the fine block, `coarse` is the coarse block, `ifine` are `CartesianIndices` into the ghost cells
+to be filled in `fine`, `face` is the direction from `fine` to `coarse`.
+"""
+@generated function fill_ghost_conserv!(fine::AbstractArray{T, D}, ifine::CartesianIndices{D},
+                                        coarse::AbstractArray{T, D}, icoarse::CartesianIndices{D},
+                                        face::CartesianIndex{D}) where {T, D}
+        quote
+            # If, Ic -> Indexes of fine, cooarse inside the rectangles
+            # Jf, Jc -> Indexes in the original arrays (e.g. Jf = ifine[Is])
+            for If in CartesianIndices(ifine)
+                Ic = CartesianIndex(@ntuple $D d -> fld1(If[d], 2))
+                Jc = icoarse[Ic]
+                Jf = ifine[If]
+                
+                f = __conserv_coeff0(Val($D)) * coarse[Jc]
+                Jf1 = CartesianIndex(@ntuple $D d->(Jf[d] - face[d]))
+                f += __conserv_coeff1(Val($D)) * fine[Jf1]
+                for d1 in 1:$D
+                    if face[d1] != 0
+                        Jf2 = CartesianIndex(@ntuple $D d->(d==d1 ? Jf1[d] - face[d] : Jf1[d]))
+                    else
+                        sg = 2 * (2 - mod1(Jf1[d1], 2)) - 1
+                        Jf2 = CartesianIndex(@ntuple $D d->(d==d1 ? Jf1[d] + sg : Jf1[d]))
+                    end
+                    f += __conserv_coeff2(Val($D)) * fine[Jf2]
+                end                
+                fine[Jf] = f
+            end
+        end
+end
+
+function fill_ghost_conserv!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
+    @batch for edge in v
+        src = u[edge.coarse]
+        dest = u[edge.fine]
+        fill_ghost_conserv!(dest, ghostindices(u, edge.face),
+                            src, subblockbnd(u, edge.subblock, -edge.face), edge.face)
+    end
+end
+
+
+function fill_ghost_conserv!(u::ScalarBlockField{D}, conn::Connectivity) where {D}
+    # For each layer...
+    for v in conn.refboundary
+        fill_ghost_conserv!(u, v)
+    end
+end
+
+"""
+Fill the flux of a coarse block restricting from the flux of a finer lock in a refinement
+boundary.
+"""
+function restrict_flux!(f::VectorBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
+    for edge in v
+        (;coarse, fine, face, subblock) = edge        
+        isrc = bndface(f, face)
+        idest1 = bndface(f, -face)
+        dim = perpdim(face)
+        #@info "Restricting flux" coarse fine face dim
+        
+        idest = CartesianIndices(ntuple(d -> d == dim ? idest1.indices[d] :
+                                        halfrange(idest1.indices[d], subblock[d]),
+                                        Val(D)))
+        
+        restrict_flux!(f[coarse], idest, f[fine], isrc, dim)
+    end
+end
+
+
+"""
+Fill the flux of a coarse block restricting from the flux of a finer lock in a refinement
+boundary.
+"""
+function restrict_flux!(f::VectorBlockField{D}, conn::Connectivity) where {D}
+    # For each layer...
+    for (lvl, v) in enumerate(conn.refboundary)
+        #@info "Restricting flux at level" lvl
+        restrict_flux!(f, v)
+    end
+end
+
+
 @inline function __mirrorindex(I::CartesianIndex{D}, CI::CartesianIndices{D},
                         bnd::CartesianIndex{D}) where {D}
     CartesianIndex(ntuple(d -> (bnd[d] == 0 ? I[d] :
                                 (last(CI.indices[d]) - I[d] + 1)), Val(D)))
 end
+

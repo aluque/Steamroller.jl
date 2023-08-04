@@ -133,6 +133,13 @@ function newblocks!(f::VectorBlockField{D, M, G, T}, n) where {D, M, G, T}
     return length(f.u)
 end
 
+"""
+Create a new block in field `f` and checks that it is equal to `n`.
+"""
+function newblock!(f, n)
+    n1 = newblock!(f)
+    @assert n1 == n "Block number assertion failed.  Some fields are in an inconsistent state"
+end
 
 
 """
@@ -170,6 +177,16 @@ sidelength(::VectorBlockField{D, M}) where {D, M} = M + 1
 """ Return number of ghost cells in perpendicular to each face. """
 nghost(::ScalarBlockField{D, M, G}) where {D, M, G} = G
 nghost(::VectorBlockField{D, M, G}) where {D, M, G} = G
+
+""" Select the first half (`h==1`) or second half (`h==2`) of a range. """
+function halfrange(r::UnitRange, h)
+    if h == 1
+        return first(r):(first(r) + div(length(r), 2) - 1)
+    elseif h == 2
+        return (first(r) + div(length(r), 2)):last(r)
+    end
+end
+
 
 """ Return a CartesianIndices with the block indices ignoring ghosts."""
 function localindices(::ScalarBlockField{D, M}) where {D, M}
@@ -256,6 +273,16 @@ A CartesianIndex is a correct face specification if it consists only on
 end
 
 
+"""
+Perpendicular direction to a face.  Assumes that there is only one element in face that is non-zero
+and returns its index.
+"""
+@generated function perpdim(face::CartesianIndex{D}) where {D}
+    quote
+        @nif $D d->(face[d] != 0) (d->return d)
+    end
+end
+
 # First and last indices of the ghost area
 ghostfirst(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? 1 : (M + G + 1)
 ghostlast(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? G : M + 2G
@@ -272,6 +299,8 @@ overlapfirst(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? (G + 1)
 overlaplast(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? 2G : M + G
 overlaprange(f::ScalarBlockField, k) = overlapfirst(f, k):overlaplast(f, k)
 
+# Index of the boundary face for vector fields
+bndindex(::VectorBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? (G + 1) : (G + M + 1)
 
 """ Return a CartesianIndices for ghost cells at a given face provided as a CartesianIndex. """
 function ghostindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
@@ -326,6 +355,16 @@ Computes the "mirror" indices of CartesianIndices.
 function mirrorghost(f::ScalarBlockField{D}, ci::CartesianIndices{D},
                      dir::CartesianIndex{D}) where {D}
     CartesianIndices(ntuple(d->mirrorghost(f, ci.indices[d], dir[d]), Val(D)))
+end
+
+"""
+Compute an `CartesianIndices` for the boundary face of a VectorBlockField
+"""
+function bndface(f::VectorBlockField{D, M, G}, face::CartesianIndex{D}) where {D, M, G}
+    @assert isface(face)
+    CartesianIndices(ntuple(dim -> (face[dim] == 0 ?
+                                    ((G + 1):(G + M)) :
+                                    (bndindex(f, face[dim]):bndindex(f, face[dim]))), Val(D)))
 end
 
 
@@ -396,7 +435,7 @@ Base.@propagate_inbounds function Base.getindex(v::StrippedBlockField,
 end
 
 Base.@propagate_inbounds function Base.getindex(v::StrippedBlockField,
-                                                I::Int...) where {T, N}
+                                                I::Int...)
     valid(v, I[end])[Base.front(I)...]
 end
 
