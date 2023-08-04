@@ -305,7 +305,7 @@ function residual_subblock!(r::ScalarBlockField{D, M, G},
     for I in subblockindices(r, subblock)
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Lu = applystencil(ublk, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
 
         r[I, blk] = -(b[I, blk] + Lu / s)
     end
