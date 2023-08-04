@@ -34,6 +34,8 @@ include("multigrid.jl")
 include("transport.jl")
 include("refinement.jl")
 include("fluid.jl")
+include("chemistry.jl")
+include("streamer.jl")
 include("util.jl")
 
 end # module

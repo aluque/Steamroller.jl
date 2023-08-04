@@ -9,7 +9,7 @@ Compute derivatives of electron density and heavy species due to the chemical mo
 Receives the electron density `ne` heavy species density `nh` (as an SVector) and the electric field
 magnitude `eabs`, all at a given location.
 """
-derivs(chem::AsbtractChemistry, ne, nh, eabs) = error("Not implemented")
+derivs(chem::AbstractChemistry, ne, nh, eabs) = error("Not implemented")
 
 
 """
@@ -32,7 +32,7 @@ If `init` is Val{true}() also initializes the derivatives in the same pass.
                               eabs::ScalarBlockField{D, M, G},
                               chem, init::Val{vinit}=Val(true)) where {D, M, G, vinit}
     for I in validindices(dne)
-        dne1, dh1 = derivs(chem, ne[I, blk], nh[I, blk], eabs)        
+        dne1, dnh1 = derivs(chem, ne[I, blk], nh[I, blk], eabs[I, blk])        
         if vinit
             dne[I, blk] = dne1
             dnh[I, blk] = dnh1
@@ -53,7 +53,7 @@ struct NetIonization{TR <: AbstractTransportModel} <: AbstractChemistry
 end
 
 function derivs(chem::NetIonization, ne, nh, eabs)
-    dne = ne * nettownsend(chem.trans, eabs)
+    dne = mobility(chem.trans, eabs) * eabs * ne * nettownsend(chem.trans, eabs)
     dh = @SVector [dne]
 
     return (dne, dh)
