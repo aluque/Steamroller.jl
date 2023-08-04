@@ -26,7 +26,6 @@ end
 compatible(ref::FixedRef, blk, I, h) = h < ref.hmax
 
 
-
 """
 A refinement criterium based on electron density.  We must refine if, when the electron density
 is larger than nemax the grid size is larger than hmax. 
@@ -37,14 +36,38 @@ struct ElectronDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::ElectronDensityRef, blk, I, h) = (h < ref.hmax) || (ref.ne[I, blk] < ref.nemax)
-
+compatible(ref::ElectronDensityRef, blk, I, h) = (h < ref.hmax) || (ref.ne[addghost(ref.ne, I), blk] < ref.nemax)
 
 
 """
-The refinement creiterium proposed in Teunnisen (2017), which depends on the electric field, `eabs`,
-a transport model `transport` and three parameters `c0`, `c1` and `neighs` which is the 
-number of neighboring cells where the refinement "spills".
+A refinement criterium based on one dimension (generally radius).  We must refine if, when the
+dimension is smaller than threshold, the grid size is larger than hmax. 
+"""
+struct DirThresholdRef{Dir, T} <: AbstractRefinement
+    threshold::T
+    hmax::T
+end
+
+compatible(ref::DirThresholdRef{Dir, T}, blk, I, h) where {Dir, T} = (h < ref.hmax) || (I[Dir] * h - convert(T, 1/2) > ref.threshold)
+
+
+"""
+A refinement criterium based on ion density.  We must refine if, when the ion density
+is larger than nemax the grid size is larger than hmax. 
+"""
+struct IonDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
+    nh::SBF
+    species::Int
+    nhmax::T
+    hmax::T
+end
+
+compatible(ref::IonDensityRef, blk, I, h) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk][ref.species] < ref.nhmax)
+
+
+"""
+The refinement criterium proposed in Teunnisen (2017), which depends on the electric field, `eabs`,
+a transport model `transport` and two parameters `c0`, `c1`.
 """
 struct TeunissenRef{T, SBF <: ScalarBlockField, S <: AbstractTransportModel} <: AbstractRefinement
     eabs::SBF
@@ -55,8 +78,8 @@ end
 
 function compatible(ref::TeunissenRef, blk, I, h)
     (;eabs, transport, c0, c1) = ref
-
-    maxh = c0 * c1 / townsend(transport, c1 * eabs[I, blk])
+    I1 = addghost(eabs, I)
+    maxh = c0 * c1 / townsend(transport, c1 * eabs[I1, blk])
     return h < maxh
 end
 
@@ -74,56 +97,68 @@ The result is stored in `m` as true/false.
 
     # Perhaps we should find a way to stop working once we have found a positive cell
     # the problem is how to match this with the spilling.
-    for I in validindices(m)
-        m[I, blk] = !compatible(ref, blk, I, h)
+    for I in localindices(m)
+        m[addghost(m, I), blk] = !compatible(ref, blk, I, h)
     end
 end
 
-@enum RefDelta DEREFINE=-1 KEEP=0 REFINE=1
+@enum RefDelta REMOVE=-1 KEEP=0 REFINE=1
 Base.zero(::Type{Steamroll.RefDelta}) = KEEP
+Base.convert(::Type{Float64}, d::RefDelta) = convert(Float64, Int(d))
 
 """
 Look for the required changes in the tree according to the refining mark `m`
-The result is stored in the refmark output which for each block will contain:
+The result is stored in the `delta` output which for each block will contain:
 
  -1: Block can be safely derefined (only meaningful if it is not a leaf)
  0: Block must be kept as is.
  1: Block must be refined.
 
 """
-function refine!(tree, m::ScalarBlockField{D},
-                 delta::ScalarBlockField{D},
-                 stencil) where {D}
-    delta .= DEREFINE
-    
-    @blocks order=serial for (lvl, c, blk) in tree        
-        delta1 = delta[blk][]
-        
-        if isleaf(tree, lvl, c)
-            if any(m[blk])
-                delta[blk][] = REFINE
-
-                if delta1 != REFINE
-                    ensure_proper!(tree, delta, stencil, lvl, c)
-                end
-                keep_parent!(tree, delta, lvl, c)
-            else
-                delta[blk][] = max(KEEP, delta[blk][])
-            end            
+function refdelta!(tree, delta::ScalarBlockField{D},
+                   m::ScalarBlockField{D},
+                   stencil) where {D}
+    delta .= KEEP
+    # First pass: we look only at each block independently of its neighbors
+    @blocks order=flat for (lvl, c, blk) in tree        
+        if any(m[blk])
+            delta[blk][] = REFINE
         else
-            if any(m[blk])
-                delta[blk][] = max(KEEP, delta[blk][])
+            if isleaf(tree, lvl, c)
+                delta[blk][] = REMOVE
             end
-
-            # watch out! the KEEP state of delta may have been set by some other block,
-            # not by the above if.
-            if  delta[blk][] >= KEEP
-                ensure_proper!(tree, delta, stencil, lvl, c)
-            end
-
-            keep_parent!(tree, delta, lvl, c)
         end
     end
+
+    # ensure proper nesting
+    @blocks order=serial for (lvl, c, blk) in tree        
+        isleaf(tree, lvl, c) || continue        
+        if delta[blk][] == REFINE
+            ensure_proper_refine!(tree, delta, stencil, lvl, c)
+        else
+            ensure_proper!(tree, delta, stencil, lvl, c)
+        end        
+    end
+
+    # ensure that only remove blocks if all siblings are marked for removal
+    @blocks order=serial for (lvl, c, blk) in tree        
+        isleaf(tree, lvl, c) || continue
+
+        if delta[blk][] == REMOVE            
+            pc = parentcoord(c)
+            pblk = get(tree[lvl - 1], pc)
+
+            if delta[pblk][] == REFINE
+                delta[blk][] = KEEP
+            else
+                for sib in siblings(c)
+                    sblk = tree[lvl][sib]
+                    delta[blk][] = max(delta[blk][], delta[sblk][])
+                end
+            end
+        end
+    end
+
 end
 
 
@@ -145,10 +180,8 @@ end
 
 """
 Make sure that all neighbors of block with coordinates `c` at level `lvl` exist.
-This should be called when the final state of `c` is a non-leaf.
 """
-    
-function ensure_proper!(tree, delta, stencil, lvl, c)
+function ensure_proper_refine!(tree, delta, stencil, lvl, c)
     for s in stencil
         if !((c + s) in tree[lvl].domain)
             continue
@@ -164,14 +197,72 @@ function ensure_proper!(tree, delta, stencil, lvl, c)
             pblk = get(tree[lvl - 1], pc)
 
             @assert pblk != 0 "Proper nesting broken at level=$(lvl) block coordinates $(Tuple(c + s))"
-            delta1, delta[pblk][] = delta[pblk][], REFINE
+            delta[pblk][] = REFINE
 
             # if delta is already REFINE, we have already gone though this
-            if delta1 != REFINE
-                ensure_proper!(tree, delta, stencil, lvl - 1, pc)
-            end
+            # if delta1 != REFINE
+            #     ensure_proper!(tree, delta, stencil, lvl - 1, pc)
+            # end
         else
             delta[other][] = max(delta[other][], KEEP)
         end
     end
+end
+
+"""
+Make sure that all (possible non-filled) neighbors of a block have parents.  This should be called
+for all leaf nodes to ensure proper refinement.
+"""
+function ensure_proper!(tree, delta, stencil, lvl, c)
+    for s in stencil
+        if !((c + s) in tree[lvl].domain)
+            continue
+        end
+        
+        pc = parentcoord(c + s)
+        pblk = get(tree[lvl - 1], pc)
+
+        @assert pblk != 0 "Proper nesting broken at level=$(lvl) block coordinates $(Tuple(c + s))"
+
+        delta[pblk][] = max(delta[pblk][], KEEP)
+    end    
+end
+
+
+"""
+Apply to `tree` the refinement delta indicated by `refdelta`.
+
+`freeblocks` is a list of availabe free blocks (which may be modified by this function).
+"""
+function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel)
+    @blocks order=serial for (lvl, coord, blk) in tree
+        lvl > 1 || continue
+        isleaf(tree, lvl, coord) || continue        
+        
+        if refdelta[blk][] == REMOVE && lvl > minlevel
+            pc = parentcoord(coord)
+            pblk = get(tree[lvl - 1], pc)
+
+            restrict!(fields, pblk, blk, subcoord(coord))
+            delete!(tree[lvl], coord)
+            delete!(tree[lvl], blk)
+            push!(freeblocks, blk)
+
+        elseif refdelta[blk][] == REFINE && lvl < maxlevel
+            for c in subblocks(coord)
+                if isempty(freeblocks)
+                    nblk = newblock!(fields)
+                else
+                    nblk = pop!(freeblocks)
+                end
+                
+                # new blocks will not be included in the loop until the are synced
+                addblock!(tree, lvl + 1, c, nblk)
+                # pseudo-code
+                interp!(fields, nblk, blk, subcoord(c))                
+            end
+        end
+    end
+
+    sync!(tree)
 end
