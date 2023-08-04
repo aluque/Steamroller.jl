@@ -50,6 +50,14 @@ function subcoord(c::CartesianIndex{D}) where {D}
     CartesianIndex(ntuple(d -> rem(c[d] - 1, 2) + 1, Val(D)))
 end
 
+"""
+Blocks that are children of the same parent as `c`
+"""
+@inline function siblings(c::CartesianIndex{D}) where {D}
+    CartesianIndices(ntuple(d -> (2 * fld(c[d] - 1, 2) + 1):(2 * fld(c[d] - 1, 2) + 2), Val(D)))
+end
+
+
 
 """
 Return coordinates of the first cell (e.g. lower left) in a block as
