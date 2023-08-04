@@ -2,6 +2,7 @@ module Steamroll
 
 using Base.Cartesian
 using StaticArrays
+using LinearAlgebra
 using DocStringExtensions
 using DataStructures
 using LoopVectorization
@@ -17,6 +18,8 @@ const BlockIndex = Int
     $(DOCSTRING)
     """
 
+include("constants.jl")
+const co = constants
 
 include("mesh.jl")
 include("blocklayer.jl")
