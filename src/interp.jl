@@ -12,13 +12,17 @@
 
 @inline _first(x, y) = x
 
+struct InterpLinear end;
+struct InterpCopy end;
+
 """
 Interpolates from a rectangle of an D-dimensional array `src` to another 
 D-dimensional array `dest`.
 
 If `base` exists the results is added to the corresponding value there.
 """
-@generated function interp!(dest::AbstractArray{T, D}, idest::CartesianIndices{D},
+@generated function interp!(::InterpLinear,
+                            dest::AbstractArray{T, D}, idest::CartesianIndices{D},
                             src::AbstractArray{T, D}, isrc::CartesianIndices{D},
                             func::B=_first) where {T, D, B}
     quote
@@ -57,6 +61,33 @@ If `base` exists the results is added to the corresponding value there.
         end
     end
 end
+
+
+@generated function interp!(::InterpCopy,
+                            dest::AbstractArray{T, D}, idest::CartesianIndices{D},
+                            src::AbstractArray{T, D}, isrc::CartesianIndices{D},
+                            func::B=_first) where {T, D, B}
+    quote
+        # Is, Id -> Indexes of source, dest inside the rectangles
+        # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
+        for Is in CartesianIndices(isrc)
+            Id0 = 2 * Is - oneunit(Is)
+            Jd0 = idest[Id0]
+            
+            Js = isrc[Is]
+            @nloops $D i d->0:1 begin
+                # We will compute the value of cell in dest at this location
+                Jd = CartesianIndex(@ntuple $D d -> Jd0[d] + i_d)
+                dest[Jd] = src[Js]
+            end
+        end
+    end
+end
+
+
+interp!(dest::AbstractArray{T, D}, idest::CartesianIndices{D},
+        src::AbstractArray{T, D}, isrc::CartesianIndices{D},
+        func::B=_first) where {T, D, B} = interp!(InterpLinear(), dest, idest, src, isrc, func)
 
 
 """
