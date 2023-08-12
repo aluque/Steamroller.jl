@@ -29,14 +29,14 @@ end
 
 
 """
-Compute electon fluxes.
+Compute electron fluxes.
 """
 @bkernel function flux!((tree, level, blkpos, blk),
                         flux::VectorBlockField{D, M, G},
                         ne::ScalarBlockField{D, M, G},
                         e::VectorBlockField{D, M, G},
                         eabs::ScalarBlockField{D, M, G},
-                        h, trans) where {D, M, G}
+                        h, trans, maxdt) where {D, M, G}
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     
@@ -64,7 +64,12 @@ Compute electon fluxes.
         
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h
-            flux[I, d, blk] = F            
+            flux[I, d, blk] = F
+
+            # Compute max dt from CFL, diffusion and Maxwell relaxation)
+            maxdt[blk] = min(h / abs(v),
+                             h^2 / diff / 4,
+                             (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F))
         end
     end    
 end

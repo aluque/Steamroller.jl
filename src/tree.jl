@@ -89,7 +89,7 @@ function Base.iterate(iter::TreeIterator, state=(1, 1))
     if length(iter.tree[lvl].pairs) < i
         lvl += 1
 
-        if length(iter.tree) < lvl
+        if length(iter.tree) < lvl || length(iter.tree[lvl].pairs) == 0
             return nothing
         end
         
@@ -114,4 +114,14 @@ function isleaf(t, lvl, B)
         end
     end
     return true
+end
+
+
+function mapreduce(f, op, tree::Tree, init)
+    x = init
+    for (lvl, I, blk) in TreeIterator(tree)
+        x = op(x, f(lvl, I, blk))
+    end
+
+    return x
 end
