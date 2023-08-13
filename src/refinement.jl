@@ -11,7 +11,7 @@ abstract type AbstractRefinement end
 """
 Test whether grid size `h` is compatible with refinement in block with `blk` at the location `I`.
 """
-function compatible(::AbstractRefinement, blk, I, h)
+function compatible(::AbstractRefinement, (lvl, coord, blk), I, h)
     error("Subtypes of AbstractRefinement should implement compatible methods")
 end
 
@@ -23,7 +23,7 @@ struct FixedRef{T} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::FixedRef, blk, I, h) = h < ref.hmax
+compatible(ref::FixedRef, (lvl, coord, blk), I, h) = h < ref.hmax
 
 
 """
@@ -36,19 +36,25 @@ struct ElectronDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::ElectronDensityRef, blk, I, h) = (h < ref.hmax) || (ref.ne[addghost(ref.ne, I), blk] < ref.nemax)
+compatible(ref::ElectronDensityRef, (lvl, coord, blk), I, h) = (h < ref.hmax) || (ref.ne[addghost(ref.ne, I), blk] < ref.nemax)
 
 
 """
 A refinement criterium based on one dimension (generally radius).  We must refine if, when the
 dimension is smaller than threshold, the grid size is larger than hmax. 
 """
-struct DirThresholdRef{Dir, T} <: AbstractRefinement
+struct DirThresholdRef{Dir, M, T} <: AbstractRefinement
     threshold::T
     hmax::T
 end
 
-compatible(ref::DirThresholdRef{Dir, T}, blk, I, h) where {Dir, T} = (h < ref.hmax) || (I[Dir] * h - convert(T, 1/2) > ref.threshold)
+function compatible(ref::DirThresholdRef{Dir, M, T}, (lvl, coord, blk), I, h) where {Dir, M, T}
+    (h < ref.hmax) && (return true)
+    gbl0 = global_first(coord, M)
+    
+    return h * (I[Dir] + gbl0[Dir] - 1 - convert(T, 1/2)) > ref.threshold    
+end
+
 
 
 """
@@ -62,7 +68,7 @@ struct IonDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::IonDensityRef, blk, I, h) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk][ref.species] < ref.nhmax)
+compatible(ref::IonDensityRef, (lvl, coord, blk), I, h) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk][ref.species] < ref.nhmax)
 
 
 """
@@ -76,7 +82,7 @@ struct TeunissenRef{T, SBF <: ScalarBlockField, S <: AbstractTransportModel} <: 
     c1::T
 end
 
-function compatible(ref::TeunissenRef, blk, I, h)
+function compatible(ref::TeunissenRef, (lvl, coord, blk), I, h)
     (;eabs, transport, c0, c1) = ref
     I1 = addghost(eabs, I)
     maxh = c0 * c1 / townsend(transport, c1 * eabs[I1, blk])
@@ -98,7 +104,7 @@ The result is stored in `m` as true/false.
     # Perhaps we should find a way to stop working once we have found a positive cell
     # the problem is how to match this with the spilling.
     for I in localindices(m)
-        m[addghost(m, I), blk] = !compatible(ref, blk, I, h)
+        m[addghost(m, I), blk] = !compatible(ref, (lvl, coord, blk), I, h)
     end
 end
 
