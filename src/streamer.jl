@@ -329,14 +329,14 @@ function step!(fld::StreamerFields, conf::StreamerConf{T}, tree, conn, t, dt, ::
 end
 
 
-function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, freeblocks;
+function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, freeblocks;
                  minlevel=1, maxlevel=typemax(Int), ref=nothing)
     (;m, refdelta, ne, nh) = fld
     (;h, fbc) = conf
 
     ref = isnothing(ref) ? conf.ref : ref
 
-    refmark!(tree, m, ref, h)
+    refmark!(tree, m, ref, h, t)
     fill_ghost_copy!(m, conn)
     refdelta!(tree, refdelta, m, BoxStencil{2}())
 

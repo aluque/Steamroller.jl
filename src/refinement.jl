@@ -11,7 +11,7 @@ abstract type AbstractRefinement end
 """
 Test whether grid size `h` is compatible with refinement in block with `blk` at the location `I`.
 """
-function compatible(::AbstractRefinement, (lvl, coord, blk), I, h)
+function compatible(::AbstractRefinement, (lvl, coord, blk), I, h, t)
     error("Subtypes of AbstractRefinement should implement compatible methods")
 end
 
@@ -23,7 +23,7 @@ struct FixedRef{T} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::FixedRef, (lvl, coord, blk), I, h) = h < ref.hmax
+compatible(ref::FixedRef, (lvl, coord, blk), I, h, t) = h < ref.hmax
 
 
 """
@@ -36,7 +36,7 @@ struct ElectronDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::ElectronDensityRef, (lvl, coord, blk), I, h) = (h < ref.hmax) || (ref.ne[addghost(ref.ne, I), blk] < ref.nemax)
+compatible(ref::ElectronDensityRef, (lvl, coord, blk), I, h, t) = (h < ref.hmax) || (ref.ne[addghost(ref.ne, I), blk] < ref.nemax)
 
 
 """
@@ -48,7 +48,7 @@ struct DirThresholdRef{Dir, M, T} <: AbstractRefinement
     hmax::T
 end
 
-function compatible(ref::DirThresholdRef{Dir, M, T}, (lvl, coord, blk), I, h) where {Dir, M, T}
+function compatible(ref::DirThresholdRef{Dir, M, T}, (lvl, coord, blk), I, h, t) where {Dir, M, T}
     (h < ref.hmax) && (return true)
     gbl0 = global_first(coord, M)
     
@@ -68,7 +68,7 @@ struct IonDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
     hmax::T
 end
 
-compatible(ref::IonDensityRef, (lvl, coord, blk), I, h) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk][ref.species] < ref.nhmax)
+compatible(ref::IonDensityRef, (lvl, coord, blk), I, h, t) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk][ref.species] < ref.nhmax)
 
 
 """
@@ -82,13 +82,43 @@ struct TeunissenRef{T, SBF <: ScalarBlockField, S <: AbstractTransportModel} <: 
     c1::T
 end
 
-function compatible(ref::TeunissenRef, (lvl, coord, blk), I, h)
+function compatible(ref::TeunissenRef, (lvl, coord, blk), I, h, t)
     (;eabs, transport, c0, c1) = ref
     I1 = addghost(eabs, I)
     maxh = c0 * c1 / townsend(transport, c1 * eabs[I1, blk])
     return h < maxh
 end
 
+"""
+A refinement criterium that combines two criteria in an "and" relationship, i.e. a cell
+is `compatible` if it is compatible according to criterium 1 and criterium 2.
+"""
+struct AndRef{R1, R2} <: AbstractRefinement
+    crit1::R1
+    crit2::R2
+end
+
+function compatible(ref::AndRef, (lvl, coord, blk), I, h, t)
+    return compatible(ref.crit1, (lvl, coord, blk), I, h, t) && compatible(ref.crit2, (lvl, coord, blk), I, h, t)
+end
+
+
+"""
+A refinement criterium that is active only in a given time interval [`tmin`, `tmax`).  Outside this interval
+every cell is `compatible`.
+"""
+struct TimeLimitedRef{T, R} <: AbstractRefinement
+    tmin::T
+    tmax::T
+    crit::R
+end
+
+function compatible(ref::TimeLimitedRef, (lvl, coord, blk), I, h, t)
+    (;tmin, tmax, crit) = ref
+    (tmin <= t < tmax) || return true
+    
+    return compatible(crit, (lvl, coord, blk), I, h, t)
+end
 
 """
 Mark cells that at a given level do not satisfy the refinement criterium.
@@ -96,7 +126,7 @@ Mark cells that at a given level do not satisfy the refinement criterium.
 The result is stored in `m` as true/false.
 """
 @bkernel function refmark!((tree, lvl, coord, blk), m::ScalarBlockField{D},
-                           ref::AbstractRefinement, h) where {D}    
+                           ref::AbstractRefinement, h, t) where {D}    
     h /= (1 << lvl)
     
     m[blk] .= false
@@ -104,7 +134,7 @@ The result is stored in `m` as true/false.
     # Perhaps we should find a way to stop working once we have found a positive cell
     # the problem is how to match this with the spilling.
     for I in localindices(m)
-        m[addghost(m, I), blk] = !compatible(ref, (lvl, coord, blk), I, h)
+        m[addghost(m, I), blk] = !compatible(ref, (lvl, coord, blk), I, h, t)
     end
 end
 
