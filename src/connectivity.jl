@@ -134,8 +134,8 @@ end
 function fill_ghost!(u, l, conn, bc)
     fill_ghost_copy!(u, conn.neighbor[l])
     fill_ghost_bnd!(u, conn.boundary[l], bc)
-    fill_ghost_interp!(u, conn.refboundary[l])
-    #fill_ghost_conserv!(u, conn.refboundary[l])
+    #fill_ghost_interp!(u, conn.refboundary[l])
+    fill_ghost_conserv!(u, conn.refboundary[l])
 end
 
 
