@@ -29,19 +29,17 @@ function fmg!(u, b, r, u1, s,
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)
     end
-
+    
     for l in 1:lmax
         copyto!(u1, u, tree[l])
 
         if l > 1
-            diffto!(u1, u, u1, tree[l - 1])
-            
+            diffto!(u1, u, u1, tree[l - 1])            
             fill_ghost!(u1, l - 1, conn, bc)        
-
-            interp_add_level!(u, u1, conn.child[l])
-            
-            fill_ghost!(u, l - 1, conn, bc)        
+            interp_add_level!(u, u1, conn.child[l])            
         end
+        
+        fill_ghost!(u, l, conn, bc)
 
         vcycle!(u, b, r, u1, s, tree, conn, geometry, bc, lpldisc; lmax=l,
                ndown, ntop, nup, ω)
