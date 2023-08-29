@@ -288,6 +288,12 @@ boundary.
 function restrict_flux!(f::VectorBlockField{D}, v::Vector{RefBoundary{D}}) where {D}
     for edge in v
         (;coarse, fine, face, subblock) = edge        
+
+        # We do not consider fluxes in the diagonal direction.  Generally this is not a problem
+        # but if the connectivity was built using a BoxStencil, we also have diagonal refinement
+        # boundaries.  This check avoids problems in that case.
+        isaxis(face) || continue
+        
         isrc = bndface(f, face)
         idest1 = bndface(f, -face)
         dim = perpdim(face)

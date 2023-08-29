@@ -283,6 +283,11 @@ and returns its index.
     end
 end
 
+"""
+Check that a face is a direction, i.e. that one and only one component is nonzero.
+"""
+isaxis(face::CartesianIndex) = 1 == count(!=(0), Tuple(face))
+
 # First and last indices of the ghost area
 ghostfirst(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? 1 : (M + G + 1)
 ghostlast(::ScalarBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? G : M + 2G
