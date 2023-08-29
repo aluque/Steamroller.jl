@@ -291,6 +291,7 @@ function step!(fld::StreamerFields, conf::StreamerConf{T}, tree, conn, t, tmax, 
     (;ne, nh, ne1, nh1, ke, kh, maxdt) = fld
     (;dt_safety_factor) = conf
 
+    maxdt .= typemax(eltype(maxdt))
     
     ## This is SSPRK (3rd order SSP Runge-Kutta).
     derivs!(ke[1], kh[1], ne, nh, t, fld, conf, tree, conn)
