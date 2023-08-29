@@ -14,7 +14,7 @@ function fmg!(u, b, r, u1, s,
               tree, conn, geometry, bc, lpldisc;
               lmax=0, ndown=3, ntop=5, nup=3, ω=1.25)
     
-    lmax = length(tree)
+    lmax = findlast(!isempty, tree)
     for l in lmax:-1:2
         sl = s / (1 << (l - 1))^2
         restrict_level!(u, conn.child[l])
