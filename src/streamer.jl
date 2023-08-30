@@ -210,7 +210,7 @@ end
 Compute derivatives starting from densities ne, ni and stores them in dne, dnh.
 """
 function derivs!(dne, dnh, ne, nh, t, fld::StreamerFields, conf::StreamerConf{T},
-                 tree, conn, fmgiter=4) where {T}
+                 tree, conn, fmgiter=2) where {T}
     (;q, q1, r, q, u, u1, e, flux, eabs, maxdt) = fld
     (;eb, pbc, h, trans, chem, geom, lpl, pbc, fbc) = conf
     
