@@ -80,6 +80,11 @@ end
 
 getblk(f::AbstractBlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
+function valid(f::VectorBlockField{D}, blk, dim) where D
+    v = view(f.u[blk], validindices(f, dim).indices..., dim)
+    return v
+end
+
 function Base.zero(f::ScalarBlockField{D, M, G, T, N, A}) where {D, M, G, T, N, A}
     S = M + 2G
     val = [zero(MArray{NTuple{D, S}, T}) for i in 1:length(f)]
@@ -173,6 +178,11 @@ blksizeghost(::VectorBlockField{D, M, G}) where {D, M, G} = tuple(ntuple(_ -> M 
 """ Return number of valid (i.e. non-ghost) cells along each dimension. """
 sidelength(::ScalarBlockField{D, M}) where {D, M} = M
 sidelength(::VectorBlockField{D, M}) where {D, M} = M + 1
+
+""" Return number of valid (i.e. non-ghost) cells along each dimension for scalar fields in the same
+mesh. """
+scalarlength(::ScalarBlockField{D, M}) where {D, M} = M
+scalarlength(::VectorBlockField{D, M}) where {D, M} = M
 
 """ Return number of ghost cells in perpendicular to each face. """
 nghost(::ScalarBlockField{D, M, G}) where {D, M, G} = G
