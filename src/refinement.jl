@@ -7,6 +7,10 @@ compatible(::Refinement, blk, I, h)
 """
 abstract type AbstractRefinement end
 
+"""
+Set a decayed refinement.  By default, refinement decays instantaneously.
+"""
+decay(ref::AbstractRefinement, v, dt) = zero(v)
 
 """
 Test whether grid size `h` is compatible with refinement in block with `blk` at the location `I`.
@@ -121,20 +125,36 @@ function compatible(ref::TimeLimitedRef, (lvl, coord, blk), I, h, t)
 end
 
 """
+A refinement with some persistence in time.
+"""
+struct PersistingRef{T, R} <: AbstractRefinement
+    decay::T
+    crit::R
+end
+
+compatible(ref::PersistingRef, args...) = compatible(ref.crit, args...)
+decay(ref::PersistingRef, v, dt) = v > 0 ? v - dt / ref.decay : zero(v)
+
+
+"""
 Mark cells that at a given level do not satisfy the refinement criterium.
 
 The result is stored in `m` as true/false.
 """
 @bkernel function refmark!((tree, lvl, coord, blk), m::ScalarBlockField{D},
-                           ref::AbstractRefinement, h, t) where {D}    
+                           ref::AbstractRefinement, h, t, dt) where {D}    
     h /= (1 << lvl)
     
-    m[blk] .= false
+    # m[blk] .= false
 
     # Perhaps we should find a way to stop working once we have found a positive cell
     # the problem is how to match this with the spilling.
     for I in localindices(m)
-        m[addghost(m, I), blk] = !compatible(ref, (lvl, coord, blk), I, h, t)
+        if !compatible(ref, (lvl, coord, blk), I, h, t)
+            m[addghost(m, I), blk] = 1
+        else
+            m[addghost(m, I), blk] = decay(ref, m[addghost(m, I), blk], dt)
+        end
     end
 end
 
@@ -157,7 +177,7 @@ function refdelta!(tree, delta::ScalarBlockField{D},
     delta .= KEEP
     # First pass: we look only at each block independently of its neighbors
     @blocks order=flat for (lvl, c, blk) in tree        
-        if any(m[blk])
+        if any(>(0), m[blk])
             delta[blk][] = REFINE
         else
             if isleaf(tree, lvl, c)
@@ -261,7 +281,7 @@ function ensure_proper!(tree, delta, stencil, lvl, c)
         @assert pblk != 0 "Proper nesting broken at level=$(lvl) block coordinates $(Tuple(c + s))"
 
         delta[pblk][] = max(delta[pblk][], KEEP)
-    end    
+    end
 end
 
 

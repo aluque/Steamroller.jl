@@ -90,7 +90,7 @@ struct StreamerFields{T, S <: ScalarBlockField, SH <: ScalarBlockField,
         flux = flux_same_as_e ? e : VectorBlockField{D, M, 2, T}()
 
         eabs = ScalarBlockField{D, M, 2, T}()
-        m = ScalarBlockField{D, M, 3, Bool}()
+        m = ScalarBlockField{D, M, 3, T}()
         refdelta = ScalarBlockField{2, 1, 0, RefDelta}()        
 
         maxdt = Vector{T}(undef, 2^14)
@@ -141,11 +141,14 @@ Interpolate all fields that require interpolation in `sf`, from block `src` into
 `sub` being the sub-block local coordinates.
 """
 function interp!(sf::StreamerFields, dest, src, sub)
-    (;ne, nh, u) = sf
+    (;ne, nh, u, m) = sf
     
     interp!(ne[dest], validindices(ne), ne[src], subblockindices(ne, sub))
     interp!(nh[dest], validindices(nh), nh[src], subblockindices(nh, sub))
     interp!(u[dest], validindices(u), u[src], subblockindices(u, sub))
+
+    # Refinement marking are initialized as zero
+    m[dest] .= 0
 end
 
 
@@ -330,14 +333,14 @@ function step!(fld::StreamerFields, conf::StreamerConf{T}, tree, conn, t, dt, ::
 end
 
 
-function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, freeblocks;
+function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, dt, freeblocks;
                  minlevel=1, maxlevel=typemax(Int), ref=nothing)
     (;m, refdelta, ne, nh) = fld
     (;h, fbc) = conf
 
     ref = isnothing(ref) ? conf.ref : ref
 
-    refmark!(tree, m, ref, h, t)
+    refmark!(tree, m, ref, h, t, dt)
     fill_ghost_copy!(m, conn)
     refdelta!(tree, refdelta, m, BoxStencil{2}())
 
