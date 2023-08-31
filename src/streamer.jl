@@ -3,28 +3,19 @@ Code to produce a streamer simulation.
 =#
 
 """
-Fields required to run a streamer fluid simulation.
+Fields required to run a streamer fluid simulation with K species (electrons are assumed to be first).
 """
-struct StreamerFields{T, S <: ScalarBlockField, SH <: ScalarBlockField,
+struct StreamerFields{T, K, S <: ScalarBlockField,
                       V <: VectorBlockField, M <: ScalarBlockField,
                       R <: ScalarBlockField}
-    "Electron density"
-    ne::S
+    "Species density"
+    n::SVector{K, S}
 
-    # Note that nh are of SCALAR type even if they store several numbers per cell.
-    # here SCALAR is used in the physicist's sense.
-    "Heavy species density"
-    nh::SH
-
-    "Electron density for intermediate eval"
-    ne1::S
-
-    "Heavy species density for intermediate eval"
-    nh1::SH
-
-    "Derivatives of the electron density and the heavy density"    
-    ke::SVector{3, S}
-    kh::SVector{3, SH}
+    "Intermediate species density"
+    n1::SVector{K, S}
+    
+    "Derivatives of the densities (several of them b.c. we use RK)"
+    dn::Vector{SVector{K, S}}
         
     "Charge density"
     q::S
@@ -63,21 +54,14 @@ struct StreamerFields{T, S <: ScalarBlockField, SH <: ScalarBlockField,
     """
     Initialize a `StreamerFields` instance.
     """
-    function StreamerFields(T, D, M, H, flux_same_as_e=false)
+    function StreamerFields(T, K, D, M, H, flux_same_as_e=false)
         TH = SVector{H, T}
-        ne = ScalarBlockField{D, M, 2, T}()
-        ne1 = ScalarBlockField{D, M, 2, T}()
-        nh = ScalarBlockField{D, M, 2, TH}()
-        nh1 = ScalarBlockField{D, M, 2, TH}()
+
+        kscalars(k) = SVector{K}(ntuple(i -> ScalarBlockField{D, M, 2, T}(), Val(K)))
+        n = kscalars(K)
+        n1 = kscalars(K)
+        dn = [kscalars(K) for _ in 1:3]
         
-        ke = @SVector [ScalarBlockField{D, M, 2, T}(),
-                       ScalarBlockField{D, M, 2, T}(),
-                       ScalarBlockField{D, M, 2, T}()]
-        
-        kh = @SVector [ScalarBlockField{D, M, 2, TH}(),
-                       ScalarBlockField{D, M, 2, TH}(),
-                       ScalarBlockField{D, M, 2, TH}()]
-                       
         q = ScalarBlockField{D, M, 2, T}()
         q1 = ScalarBlockField{D, M, 2, T}()
         
@@ -96,9 +80,18 @@ struct StreamerFields{T, S <: ScalarBlockField, SH <: ScalarBlockField,
         maxdt = Vector{T}(undef, 2^14)
         
         return new{
-            T, typeof(ne), typeof(nh), typeof(e), typeof(m), typeof(refdelta)
-        }(ne, nh, ne1, nh1, ke, kh, q, q1, u, u1, r, eabs, e, flux, m, refdelta, flux_same_as_e, maxdt)
+            T, K, typeof(q), typeof(e), typeof(m), typeof(refdelta)
+        }(n, n1, dn, q, q1, u, u1, r, eabs, e, flux, m, refdelta, flux_same_as_e, maxdt)
     end
+end
+
+nspecies(::StreamerFields{T, K}) where {T, K} = K
+
+"""
+Build an `SVector` with all species at a given grid point.
+"""
+function species(n::SVector{K}, I, blk) where {K}
+    SVector{K}(ntuple(i -> n[i][I, blk], Val(K)))
 end
 
 
@@ -106,27 +99,28 @@ end
 Add a block to each field in the `StreamerFields` set of fields.
 """
 function newblock!(sf::StreamerFields)
-    (;ne, nh, ne1, nh1, ke, kh, q, q1, u, u1, r, eabs, e, flux, m, refdelta, flux_same_as_e) = sf
+    (;n, n1, dn, q, q1, u, u1, r, eabs, e, flux, m, refdelta, flux_same_as_e) = sf
     
-    n = newblock!(ne)
-    newblock!(nh, n)
-    newblock!(ne1, n)
-    newblock!(nh1, n)
-    foreach(i->newblock!(ke[i], n), eachindex(ke))
-    foreach(i->newblock!(kh[i], n), eachindex(kh))
-    
-    newblock!(q, n)
-    newblock!(q1, n)
-    newblock!(u, n)
-    newblock!(u1, n)
-    newblock!(r, n)
-    newblock!(eabs, n)
-    newblock!(e, n)
-    flux_same_as_e || newblock!(flux, n)
-    newblock!(m, n)
-    newblock!(refdelta, n)
+    # We obtain the block number of a field and then check that all fields create the same block number
+    j = newblock!(q)
 
-    return n
+    foreach(i->newblock!(n[i], j), eachindex(n))
+    foreach(i->newblock!(n1[i], j), eachindex(n1))
+    for dni in dn
+        foreach(i->newblock!(dni[i], j), eachindex(dni))
+    end
+        
+    newblock!(q1, j)
+    newblock!(u, j)
+    newblock!(u1, j)
+    newblock!(r, j)
+    newblock!(eabs, j)
+    newblock!(e, j)
+    flux_same_as_e || newblock!(flux, j)
+    newblock!(m, j)
+    newblock!(refdelta, j)
+
+    return j
 end
 
 function newblocks!(sf::StreamerFields, nblocks)
@@ -141,10 +135,11 @@ Interpolate all fields that require interpolation in `sf`, from block `src` into
 `sub` being the sub-block local coordinates.
 """
 function interp!(sf::StreamerFields, dest, src, sub)
-    (;ne, nh, u, m) = sf
+    (;n, u, m) = sf
+    for ni in n
+        interp!(ni[dest], validindices(ni), ni[src], subblockindices(ni, sub))
+    end
     
-    interp!(ne[dest], validindices(ne), ne[src], subblockindices(ne, sub))
-    interp!(nh[dest], validindices(nh), nh[src], subblockindices(nh, sub))
     interp!(u[dest], validindices(u), u[src], subblockindices(u, sub))
 
     # Refinement marking are initialized as zero
@@ -157,15 +152,15 @@ Restrict all fields that require restriction in `sf`, from block `src` into `des
 `sub` being the sub-block local coordinates.
 """
 function restrict!(sf::StreamerFields, dest, src, sub)
-    (;ne, nh) = sf
-    
-    restrict!(ne[dest], subblockindices(ne, sub), ne[src], validindices(ne))
-    restrict!(nh[dest], subblockindices(nh, sub), nh[src], validindices(nh))
+    (;n) = sf
+    for ni in n
+        restrict!(ni[dest], subblockindices(ni, sub), ni[src], validindices(ni))
+    end
 end
 
 
 """
-Configuration of a streamer siumation
+Configuration of a streamer simulation
 """
 struct StreamerConf{T, D,
                     G  <: AbstractGeometry,
@@ -209,12 +204,12 @@ end
 """
 Compute derivatives starting from densities ne, ni and stores them in dne, dnh.
 """
-function derivs!(dne, dnh, ne, nh, t, fld::StreamerFields, conf::StreamerConf{T},
+function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn, fmgiter=2) where {T}
     (;q, q1, r, q, u, u1, e, flux, eabs, maxdt) = fld
     (;eb, pbc, h, trans, chem, geom, lpl, pbc, fbc) = conf
     
-    netcharge!(tree, q, ne, nh, chem)
+    netcharge!(tree, q, ni, chem)
 
     for l in 1:length(tree)
         fill_ghost!(q, l, conn, pbc)
@@ -233,7 +228,9 @@ function derivs!(dne, dnh, ne, nh, t, fld::StreamerFields, conf::StreamerConf{T}
         #      tree, conn, geom, pbc, lpl, nup=3, ndown=3, ntop=1)
     end
 
-    for l in 1:length(tree)
+    # The electron density is always first among species.
+    ne = ni[1]
+    for l in 1:length(tree)        
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
@@ -250,31 +247,30 @@ function derivs!(dne, dnh, ne, nh, t, fld::StreamerFields, conf::StreamerConf{T}
     resize!(maxdt, max(length(maxdt), nblocks(tree)))
     flux!(tree, flux, ne, e, eabs, h, trans, maxdt)
     restrict_flux!(flux, conn)
-    #correct_flux!(flux, conn)
-    block_derivs!(tree, dne, dnh, ne, nh, fld, conf)
+    block_derivs!(tree, dni, ni, fld, conf)
 end
 
 
 """
 Compute the derivatives in a block/tree and store them in dne and dnh.
 """
-@bkernel function block_derivs!((tree, level, blkpos, blk), dne, dnh, ne, nh,
+@bkernel function block_derivs!((tree, level, blkpos, blk), dni, n,
                                 fld::StreamerFields, conf::StreamerConf)
     
     (;e, flux, eabs) = fld
     (;h, trans, chem, geom) = conf
     isleaf(tree, level, blkpos) || return
     
-    chemderivs!((tree, level, blkpos, blk), dne, dnh, ne, nh, eabs, chem, Val{true}())    
-    fluxderivs!((tree, level, blkpos, blk), dne, flux, h, geom)
+    chemderivs!((tree, level, blkpos, blk), dni, n, eabs, chem, Val{true}())    
+    fluxderivs!((tree, level, blkpos, blk), dni[1], flux, h, geom)
 
     nothing
 end
 
 
-@bkernel function netcharge!((tree, level, blkpos, blk), q, ne, nh, chem)
-    for I in validindices(ne)
-        q[I, blk] = netcharge(chem, ne[I, blk], nh[I, blk])
+@bkernel function netcharge!((tree, level, blkpos, blk), q, n, chem)
+    for I in validindices(n[1])
+        q[I, blk] = netcharge(chem, species(n, I, blk))
     end
 end
 
@@ -290,52 +286,48 @@ Perform a single step of the time integration.
 - `dt`: time step.
 - `fmgiter=1`: number of FMG iterations.
 """
-function step!(fld::StreamerFields, conf::StreamerConf{T}, tree, conn, t, tmax, ::Val{:ssprk3}) where T
-    (;ne, nh, ne1, nh1, ke, kh, maxdt) = fld
+function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
+               t, tmax, ::Val{:ssprk3}) where {T, K}
+    (;dn, n, n1, maxdt) = fld
     (;dt_safety_factor) = conf
 
     maxdt .= typemax(eltype(maxdt))
     
     ## This is SSPRK (3rd order SSP Runge-Kutta).
-    derivs!(ke[1], kh[1], ne, nh, t, fld, conf, tree, conn)
+    derivs!(dn[1], n, t, fld, conf, tree, conn)
 
     # Compute the dt
     dt = min(tmax - t, dt_safety_factor * mapreduce((lvl, I, blk) -> maxdt[blk], min, tree, typemax(T)))
-    SBF = identity #StrippedBlockField
-    
-    ne1 .= ne .+ ke[1] .* dt
-    nh1 .= nh .+ kh[1] .* dt
-    
-    derivs!(ke[2], kh[2], ne1, nh1, t + dt, fld, conf, tree, conn)
+    for s in 1:K
+        n1[s] .= n[s] .+ dn[1][s] .* dt
+    end
+        
+    derivs!(dn[2], n1, t + dt, fld, conf, tree, conn)
     dt1 = dt / 4
 
-    # Here and below there's some bug in VectorOfArray that adds a lot of overhead in broadcasting
-    # if I remove the brackets.
-    ne1 .= ne .+ (ke[1] .* dt1 .+ ke[2] .* dt1)
-    nh1 .= nh .+ (kh[1] .* dt1 .+ kh[2] .* dt1)
+    for s in 1:K
+        # Here and below there's some bug in VectorOfArray that adds a lot of overhead in broadcasting
+        # if I remove the brackets.
+        n1[s] .= n[s] .+ (dn[1][s] .* dt1 .+ dn[2][s] .* dt1)
+    end
 
-    derivs!(ke[3], kh[3], ne1, nh1, t + dt / 2, fld, conf, tree, conn)
-    ne .= ne .+ ((ke[1] .* (dt / 6) .+ ke[2] .* (dt / 6)) .+ ke[3] .* (2 * dt / 3))
-    nh .= nh .+ ((kh[1] .* (dt / 6) .+ kh[2] .* (dt / 6)) .+ kh[3] .* (2 * dt / 3))
+    derivs!(dn[3], n1, t + dt / 2, fld, conf, tree, conn)
 
-    restrict_full!(ne, conn)
-    restrict_full!(nh, conn)
+    for s in 1:K
+        n[s] .= n[s] .+ (dn[1][s] .* (dt / 6) .+ dn[2][s] .* (dt / 6) .+ dn[3][s] .* (2 * dt / 3))
+    end
+
+    for s in 1:K
+        restrict_full!(n[s], conn)
+    end
 
     return (t + dt, dt)
-end
-
-function step!(fld::StreamerFields, conf::StreamerConf{T}, tree, conn, t, dt, ::Val{:euler}) where T
-    (;ne, nh, ne1, nh1, ke, kh) = fld
-    
-    derivs!(ke[1], kh[1], ne, nh, t, fld, conf, tree, conn)
-    ne .= ne .+ ke[1] .* dt
-    nh .= nh .+ kh[1] .* dt
 end
 
 
 function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, dt, freeblocks;
                  minlevel=1, maxlevel=typemax(Int), ref=nothing)
-    (;m, refdelta, ne, nh) = fld
+    (;m, refdelta, n) = fld
     (;h, fbc) = conf
 
     ref = isnothing(ref) ? conf.ref : ref
@@ -344,14 +336,11 @@ function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, dt, fre
     fill_ghost_copy!(m, conn)
     refdelta!(tree, refdelta, m, BoxStencil{2}())
 
-    fill_ghost_copy!(ne, conn)
-    fill_ghost_copy!(nh, conn)
-
-    fill_ghost_bnd!(ne, conn, fbc)
-    fill_ghost_bnd!(nh, conn, fbc)
-
-    fill_ghost_interp!(ne, conn)
-    fill_ghost_interp!(nh, conn)
-    
+    for ni in n
+        fill_ghost_copy!(ni, conn)
+        fill_ghost_bnd!(ni, conn, fbc)
+        fill_ghost_interp!(ni, conn)
+    end
+        
     applydelta!(tree, refdelta, freeblocks, fld, minlevel, maxlevel)
 end
