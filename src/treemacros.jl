@@ -88,7 +88,7 @@ function deepfirst(vars, tree, body, parallel=true)
         end)
     
     if parallel
-        inner = macroexpand(@__MODULE__, :(Polyester.@batch(per=thread, $inner)))
+        inner = macroexpand(@__MODULE__, :(Polyester.@batch(per=core, $inner)))
     end
     
     outer = quote
@@ -109,7 +109,7 @@ function flat(vars, tree, body)
              ($symlevel, $symcoord, $symindex) = nth($tree, $i)
              $body
              end)
-    bloop = macroexpand(@__MODULE__, :(Polyester.@batch(per=thread, $loop)))
+    bloop = macroexpand(@__MODULE__, :(Polyester.@batch(per=core, $loop)))
     
     return bloop
 end
