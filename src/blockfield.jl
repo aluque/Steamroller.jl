@@ -2,7 +2,7 @@
    Routines to handle fields stored in block decks.
 =#
 
-abstract type AbstractBlockField{D, M, G, T, N, A} <: AbstractVectorOfArray{T, N, A}; end
+abstract type AbstractBlockField{D, M, G, T, N, A}; end
 
 
 """
@@ -77,6 +77,57 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
     end
 
 end
+
+Base.length(f::AbstractBlockField) = length(f.u)
+Base.getindex(f::AbstractBlockField, i::Integer) = f.u[i]
+Base.getindex(f::ScalarBlockField, c::CartesianIndex, i::Integer) = f.u[i][c]
+Base.getindex(f::VectorBlockField, c::CartesianIndex, d::Integer, i::Integer) = f.u[i][c, d]
+Base.setindex!(f::ScalarBlockField, v, c::CartesianIndex, i::Integer) = f.u[i][c] = v
+Base.setindex!(f::VectorBlockField, v, c::CartesianIndex, d::Integer, i::Integer) = f.u[i][c, d] = v
+Base.ndims(f::Type{<:ScalarBlockField{D}}) where D = D + 1
+Base.ndims(f::Type{<:VectorBlockField{D}}) where D = D + 2
+Base.size(f::AbstractBlockField) = (blksizeghost(f)..., length(f.u))
+Base.copy(f::AbstractBlockField) = typeof(f)(copy(f.u))
+@inline function Base.similar(f::ScalarBlockField{D, M, G}, ::Type{T} = eltype(f)) where {D, M, G, T}
+    ScalarBlockField{D, M, G, T}([similar(f[i], T) for i in eachindex(f.u)])
+end
+@inline function Base.similar(f::VectorBlockField{D, M, G}, ::Type{T} = eltype(f)) where {D, M, G, T}
+    VectorBlockField{D, M, G, T}([similar(f[i], T) for i in eachindex(f.u)])
+end
+Base.axes(f::AbstractBlockField) = (axes(f.u[1])..., axes(f.u)...)
+#Base.BroadcastStyle(::Type{<:AbstractBlockField{D, M, G}}) where {D, M, G} = Broadcast.Style{ScalarBlockField{D, M, G}}()
+Base.BroadcastStyle(::Type{T}) where {T <: AbstractBlockField} = Broadcast.Style{T}()
+Base.BroadcastStyle(::Broadcast.Style{T}, ::T2) where {T <: AbstractBlockField, T2 <: Broadcast.BroadcastStyle} = Broadcast.Style{T}()
+
+function Base.similar(bc::Broadcast.Style{ScalarBlockField{D, M, G}}, ::Type{T}) where {D, M, G, T}
+    A = find_abc(bc)
+    similar(A, T)
+end
+function Base.copyto!(f::AbstractBlockField, bc::Broadcast.Broadcasted{<:Broadcast.Style{T}}) where {T <: AbstractBlockField}
+    bc = Broadcast.flatten(bc)
+    T1 = typeof(BroadcastStyle(eltype(f.u)))
+    @batch for i in eachindex(f.u)
+        Base.copyto!(f.u[i], mapbroadcast(T1, i, bc))
+    end
+    f
+end
+function Base.copyto!(f::AbstractBlockField, bc::Broadcast.Broadcasted{Broadcast.DefaultArrayStyle{N}}) where N
+    @batch for i in eachindex(f.u)
+        Base.copyto!(f.u[i], bc)
+    end
+    f
+end
+Base.broadcastable(f::AbstractBlockField) = f
+
+
+
+"`A = find_abc(As)` returns the first AbstractBlockField among the arguments."
+find_abc(bc::Base.Broadcast.Broadcasted) = find_abc(bc.args)
+find_abc(args::Tuple) = find_aac(find_abc(args[1]), Base.tail(args))
+find_abc(x) = x
+find_abc(::Tuple{}) = nothing
+find_abc(a::AbstractBlockField, rest) = a
+find_abc(::Any, rest) = find_abc(rest)
 
 getblk(f::AbstractBlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
@@ -164,8 +215,6 @@ end
 
 # Helper functions that should reduce to compile-time constants
 Base.eltype(::AbstractBlockField{D, M, G, T}) where {D, M, G, T} = T
-Base.similar(b::ScalarBlockField{D, M, G, T}) where {D, M, G, T} = ScalarBlockField{D, M, G, T}(length(b.u))
-Base.similar(b::VectorBlockField{D, M, G, T}) where {D, M, G, T} = VectorBlockField{D, M, G, T}(length(b.u))
 
 """ Return the size of each block (not counting ghost cells). """
 blksize(::ScalarBlockField{D, M}) where {D, M} = ntuple(_ -> M, Val(D))
@@ -568,8 +617,9 @@ end
 
 """
 Traverses a tree of Broadcasted elements and changes each Broadcast type with `T` over element `i`
-of the underlying ScalarBlockField. """
-@inline function mapbroadcast(T::Type{Z}, i, x::Broadcasted{StrippedBroadcastStyle}) where {Z}
+of the underlying ScalarBlockField. 
+"""
+@inline function mapbroadcast(T::Type{Z}, i, x::Broadcast.Broadcasted) where {Z}
     Broadcasted{T}(x.f, mapbroadcast(T, i, x.args))
 end
 
@@ -578,6 +628,7 @@ end
     (mapbroadcast(T, i, args[1]), mapbroadcast(T, i, Base.tail(args))...)
 end
 @inline mapbroadcast(T, i, x::StrippedBlockField) = valid(x, i)
+@inline mapbroadcast(T, i, x::AbstractBlockField) = x[i]
 #mapbroadcast(T, i, x::StrippedBlockField) = x.bf[i]
 @inline mapbroadcast(T, i, x::Any) = x
 
