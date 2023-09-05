@@ -67,3 +67,29 @@ function maptree!(f::F, u::ScalarBlockField{D}, tree, h=1.0) where {D, F}
     end
 end
 
+
+# Formatting function to include times in the logs.
+function metafmt(level::LogLevel, _module, group, id, file, line)
+    @nospecialize
+    color = Logging.default_logcolor(level)
+    dt = format("[{:<23}] ", string(Dates.now()))
+    
+    prefix = string(dt, level == Logging.Warn ? "Warning" : string(level), ':')
+    suffix::String = ""
+    Logging.Info <= level < Logging.Warn && return color, prefix, suffix
+
+    if level < Logging.Info
+        return :blue, "", ""
+    end
+    
+    _module !== nothing && (suffix *= "$(_module)")
+    if file !== nothing
+        _module !== nothing && (suffix *= " ")
+        suffix *= Base.contractuser(file)::String
+        if line !== nothing
+            suffix *= ":$(isa(line, UnitRange) ? "$(first(line))-$(last(line))" : line)"
+        end
+    end
+    !isempty(suffix) && (suffix = "@ " * suffix)
+    return color, prefix, suffix
+end
