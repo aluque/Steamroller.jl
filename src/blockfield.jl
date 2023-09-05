@@ -78,12 +78,6 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
 
 end
 
-Base.length(f::AbstractBlockField) = length(f.u)
-Base.getindex(f::AbstractBlockField, i::Integer) = f.u[i]
-Base.getindex(f::ScalarBlockField, c::CartesianIndex, i::Integer) = f.u[i][c]
-Base.getindex(f::VectorBlockField, c::CartesianIndex, d::Integer, i::Integer) = f.u[i][c, d]
-Base.setindex!(f::ScalarBlockField, v, c::CartesianIndex, i::Integer) = f.u[i][c] = v
-Base.setindex!(f::VectorBlockField, v, c::CartesianIndex, d::Integer, i::Integer) = f.u[i][c, d] = v
 Base.ndims(f::Type{<:ScalarBlockField{D}}) where D = D + 1
 Base.ndims(f::Type{<:VectorBlockField{D}}) where D = D + 2
 Base.size(f::AbstractBlockField) = (blksizeghost(f)..., length(f.u))
@@ -120,7 +114,6 @@ end
 Base.broadcastable(f::AbstractBlockField) = f
 
 
-
 "`A = find_abc(As)` returns the first AbstractBlockField among the arguments."
 find_abc(bc::Base.Broadcast.Broadcasted) = find_abc(bc.args)
 find_abc(args::Tuple) = find_aac(find_abc(args[1]), Base.tail(args))
@@ -128,6 +121,17 @@ find_abc(x) = x
 find_abc(::Tuple{}) = nothing
 find_abc(a::AbstractBlockField, rest) = a
 find_abc(::Any, rest) = find_abc(rest)
+
+function Base.getindex(f::ScalarBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
+    S = M + 2G
+    return SizedArray{NTuple{D, S}, T}(view(f.u, ntuple(_ -> Colon(), Val(D))..., i))
+end
+
+function Base.getindex(f::VectorBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
+    S = M + 2G + 1
+    MT = Tuple{ntuple(_ -> S, Val(D))..., D}
+    return SizedArray{MT, T}(view(f.u, ntuple(_ -> Colon(), Val(D + 1))..., i))
+end
 
 getblk(f::AbstractBlockField, blk) = f.u[blk]
 valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
