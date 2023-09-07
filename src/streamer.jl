@@ -75,7 +75,7 @@ struct StreamerFields{T, K, S <: ScalarBlockField,
 
         eabs = ScalarBlockField{D, M, 2, T}()
         m = ScalarBlockField{D, M, 3, T}()
-        refdelta = ScalarBlockField{2, 1, 0, RefDelta}()        
+        refdelta = ScalarBlockField{D, 1, 0, RefDelta}()
 
         maxdt = Vector{T}(undef, 2^14)
         
@@ -325,8 +325,8 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
 end
 
 
-function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, dt, freeblocks;
-                 minlevel=1, maxlevel=typemax(Int), ref=nothing)
+function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, dt, freeblocks;
+                 minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T, D}
     (;m, refdelta, n) = fld
     (;h, fbc) = conf
 
@@ -334,7 +334,7 @@ function refine!(fld::StreamerFields, conf::StreamerConf, tree, conn, t, dt, fre
 
     refmark!(tree, m, ref, h, t, dt)
     fill_ghost_copy!(m, conn)
-    refdelta!(tree, refdelta, m, BoxStencil{2}())
+    refdelta!(tree, refdelta, m, BoxStencil{D}())
 
     for ni in n
         fill_ghost_copy!(ni, conn)
