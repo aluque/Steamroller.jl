@@ -244,7 +244,7 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         fill_ghost!(eabs, l, conn, ExtrapolateConst())
     end
 
-    resize!(maxdt, max(length(maxdt), nblocks(tree)))
+    resize!(maxdt, max(length(maxdt), length(ne)))
     flux!(tree, flux, ne, e, eabs, h, trans, maxdt)
     restrict_flux!(flux, conn)
     block_derivs!(tree, dni, ni, fld, conf)
