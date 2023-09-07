@@ -97,3 +97,15 @@ Cell centers in block `b` at level `l` given `m` cells per block.
     ntuple(d -> hl * inds.indices[d] .- (hl / 2), Val(D))
 end
 
+
+"""
+Cell faces in block `b` at level `l` given `m` cells per block.
+"""
+@inline function cell_faces(b::CartesianIndex{D}, l, m, h=1.0) where {D}
+    hl = unitcell(l, h)
+    low = hl .* m .* (Tuple(b) .- Tuple(oneunit(b)))
+    high = hl .* m .* Tuple(b)
+    
+    ntuple(d -> range(low[d], high[d], m + 1), Val(D))
+end
+
