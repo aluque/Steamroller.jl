@@ -265,7 +265,7 @@ end
 @inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
-                              ::Val{:rhs})
+                              ::Val{:lhs})
     @stencil u[I] [[0   0   0;
                     0   1   0;
                     0   0   0];;;
@@ -282,7 +282,7 @@ end
 @inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
-                              ::Val{:lhs})
+                              ::Val{:rhs})
     u[I]
 end
 
@@ -292,7 +292,7 @@ end
 @inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
-                              ::Val{:rhs})
+                              ::Val{:lhs})
     @stencil u[I] [[0   1   0;
                     1   2   1;
                     0   1   0];;;
@@ -309,7 +309,7 @@ end
 @inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
-                              ::Val{:lhs})
+                              ::Val{:rhs})
     @stencil u[I] [[0   0   0;
                     0   1   0;
                     0   0   0];;;
