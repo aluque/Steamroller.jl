@@ -24,6 +24,7 @@ const BlockIndex = Int
 include("constants.jl")
 const co = constants
 
+include("bracket.jl")
 include("mesh.jl")
 include("blocklayer.jl")
 include("tree.jl")
