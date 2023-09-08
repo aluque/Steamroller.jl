@@ -130,13 +130,15 @@ find_abc(::Any, rest) = find_abc(rest)
 
 @propagate_inbounds function Base.getindex(f::ScalarBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
     S = M + 2G
-    return SizedArray{NTuple{D, S}, T}(view(f.u, ntuple(_ -> Colon(), Val(D))..., i))
+    #return SizedArray{NTuple{D, S}, T}(view(f.u, ntuple(_ -> Colon(), Val(D))..., i))
+    return view(f.u, ntuple(_ -> Colon(), Val(D))..., i)
 end
 
 @propagate_inbounds function Base.getindex(f::VectorBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
     S = M + 2G + 1
     MT = Tuple{ntuple(_ -> S, Val(D))..., D}
-    return SizedArray{MT, T}(view(f.u, ntuple(_ -> Colon(), Val(D + 1))..., i))
+    #return SizedArray{MT, T}(view(f.u, ntuple(_ -> Colon(), Val(D + 1))..., i))
+    return view(f.u, ntuple(_ -> Colon(), Val(D + 1))..., i)
 end
 
 getblk(f::AbstractBlockField, blk) = f[blk]
