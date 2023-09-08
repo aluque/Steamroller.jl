@@ -2,6 +2,7 @@ module Steamroll
 
 using Base.Cartesian
 using StaticArrays
+using ElasticArrays
 using LinearAlgebra
 using DocStringExtensions
 using DataStructures
@@ -12,6 +13,7 @@ using RecursiveArrayTools
 using Logging
 using Dates
 using Format
+using Base: @propagate_inbounds
 
 const BlockIndex = Int
 

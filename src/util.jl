@@ -40,12 +40,7 @@ Map the function `f`, applied at cell centers, into all blocks of a
                 for I in localindices(u)
                     @nexprs $D d -> (r_d = centers[d][I[d]])
                     
-                    v = u[blk]
-                    #v[addghost(u, I)] = f(r...)
-                    
-                    # Indexing with CartesianIndex into an MArray falls back
-                    # to an AbstractArray method which is much less efficient.
-                    u.u[blk][Tuple(addghost(u, I))...] = @ncall $D f r
+                    u[blk][Tuple(addghost(u, I))...] = @ncall $D f r
                 end
             end
         end
@@ -61,8 +56,7 @@ function maptree!(f::F, u::ScalarBlockField{D}, tree, h=1.0) where {D, F}
         centers = cell_centers(coord, l, sidelength(u), h)
         for I in localindices(u)
             r = ntuple(d -> centers[d][I[d]], Val(D))
-            v = u[blk]
-            u.u[blk][Tuple(addghost(u, I))...] = f(r...)
+            u[blk][Tuple(addghost(u, I))...] = f(r...)
         end
     end
 end

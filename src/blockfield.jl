@@ -21,7 +21,7 @@ struct ScalarBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
 
         S = M + 2G
         N = D + 1
-        val = MArray{NTuple{D, S}, T, D, S^D}[]
+        val = ElasticArray{T}(undef, ntuple(_ -> S, Val(D))..., 0)
         new{D, M, G, T, N, typeof(val)}(val)
     end
 
@@ -30,7 +30,8 @@ struct ScalarBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
 
         S = M + 2G
         N = D + 1
-        val = [zero(MArray{NTuple{D, S}, T}) for i in 1:len]
+        val = ElasticArray{T}(undef, ntuple(_ -> S, Val(D))..., len)
+        val .= 0
         new{D, M, G, T, N, typeof(val)}(val)
     end
 
@@ -56,9 +57,8 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
         @assert rem(M, 2) == 0 "Block size must be divisible by 2"
 
         S = M + 2G + 1
-        MT = Tuple{ntuple(_ -> S, Val(D))..., D}
         N = D + 2
-        val = MArray{MT, T, D + 1, D * S^D}[]
+        val = ElasticArray{T}(undef, ntuple(_ -> S, Val(D))..., D, 0)
         new{D, M, G, T, N, typeof(val)}(val)
     end
 
@@ -68,7 +68,8 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
         S = M + 2G + 1
         MT = Tuple{ntuple(_ -> S, Val(D))..., D}
         N = D + 2
-        val = zeros(MArray{MT, T, D + 1, D * S^D}, len)
+        val = ElasticArray{T}(undef, ntuple(_ -> S, Val(D))..., D, len)
+        val .= 0
         new{D, M, G, T, N, typeof(val)}(val)
     end
 
@@ -78,17 +79,22 @@ struct VectorBlockField{D, M, G, T, N, A} <: AbstractBlockField{D, M, G, T, N, A
 
 end
 
+Base.length(f::AbstractBlockField) = size(f.u, ndims(f.u))
+@propagate_inbounds Base.getindex(f::ScalarBlockField, c::CartesianIndex, i::Integer) = f.u[c, i]
+@propagate_inbounds Base.getindex(f::VectorBlockField, c::CartesianIndex, d::Integer, i::Integer) = f.u[c, d, i]
+@propagate_inbounds Base.setindex!(f::ScalarBlockField, v, c::CartesianIndex, i::Integer) = f.u[c, i] = v
+@propagate_inbounds Base.setindex!(f::VectorBlockField, v, c::CartesianIndex, d::Integer, i::Integer) = f.u[c, d, i] = v
 Base.ndims(f::Type{<:ScalarBlockField{D}}) where D = D + 1
 Base.ndims(f::Type{<:VectorBlockField{D}}) where D = D + 2
-Base.size(f::AbstractBlockField) = (blksizeghost(f)..., length(f.u))
+Base.size(f::AbstractBlockField) = size(f.u)
 Base.copy(f::AbstractBlockField) = typeof(f)(copy(f.u))
 @inline function Base.similar(f::ScalarBlockField{D, M, G}, ::Type{T} = eltype(f)) where {D, M, G, T}
-    ScalarBlockField{D, M, G, T}([similar(f[i], T) for i in eachindex(f.u)])
+    ScalarBlockField{D, M, G, T}(similar(f.u, T))
 end
 @inline function Base.similar(f::VectorBlockField{D, M, G}, ::Type{T} = eltype(f)) where {D, M, G, T}
-    VectorBlockField{D, M, G, T}([similar(f[i], T) for i in eachindex(f.u)])
+    VectorBlockField{D, M, G, T}(similar(f.u, T))
 end
-Base.axes(f::AbstractBlockField) = (axes(f.u[1])..., axes(f.u)...)
+Base.axes(f::AbstractBlockField) = axes(f.u)
 #Base.BroadcastStyle(::Type{<:AbstractBlockField{D, M, G}}) where {D, M, G} = Broadcast.Style{ScalarBlockField{D, M, G}}()
 Base.BroadcastStyle(::Type{T}) where {T <: AbstractBlockField} = Broadcast.Style{T}()
 Base.BroadcastStyle(::Broadcast.Style{T}, ::T2) where {T <: AbstractBlockField, T2 <: Broadcast.BroadcastStyle} = Broadcast.Style{T}()
@@ -99,15 +105,15 @@ function Base.similar(bc::Broadcast.Style{ScalarBlockField{D, M, G}}, ::Type{T})
 end
 function Base.copyto!(f::AbstractBlockField, bc::Broadcast.Broadcasted{<:Broadcast.Style{T}}) where {T <: AbstractBlockField}
     bc = Broadcast.flatten(bc)
-    T1 = typeof(BroadcastStyle(eltype(f.u)))
-    @batch for i in eachindex(f.u)
-        Base.copyto!(f.u[i], mapbroadcast(T1, i, bc))
+    T1 = typeof(Broadcast.BroadcastStyle(eltype(f.u)))
+    @batch for i in axes(f.u, ndims(f.u))
+        Base.copyto!(f[i], mapbroadcast(T1, i, bc))
     end
     f
 end
 function Base.copyto!(f::AbstractBlockField, bc::Broadcast.Broadcasted{Broadcast.DefaultArrayStyle{N}}) where N
-    @batch for i in eachindex(f.u)
-        Base.copyto!(f.u[i], bc)
+    @batch for i in axes(f.u, ndims(f.u))
+        Base.copyto!(f[i], bc)
     end
     f
 end
@@ -122,19 +128,19 @@ find_abc(::Tuple{}) = nothing
 find_abc(a::AbstractBlockField, rest) = a
 find_abc(::Any, rest) = find_abc(rest)
 
-function Base.getindex(f::ScalarBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
+@propagate_inbounds function Base.getindex(f::ScalarBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
     S = M + 2G
     return SizedArray{NTuple{D, S}, T}(view(f.u, ntuple(_ -> Colon(), Val(D))..., i))
 end
 
-function Base.getindex(f::VectorBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
+@propagate_inbounds function Base.getindex(f::VectorBlockField{D, M, G, T}, i::Integer) where {D, M, G, T}
     S = M + 2G + 1
     MT = Tuple{ntuple(_ -> S, Val(D))..., D}
     return SizedArray{MT, T}(view(f.u, ntuple(_ -> Colon(), Val(D + 1))..., i))
 end
 
-getblk(f::AbstractBlockField, blk) = f.u[blk]
-valid(f::ScalarBlockField, blk) = view(f.u[blk], validindices(f))
+getblk(f::AbstractBlockField, blk) = f[blk]
+valid(f::ScalarBlockField, blk) = view(f[blk], validindices(f))
 function valid(f::VectorBlockField{D}, blk, dim) where D
     v = view(f.u[blk], validindices(f, dim).indices..., dim)
     return v
@@ -151,9 +157,8 @@ Creates a new block and returns its index.
 """
 function newblock!(f::ScalarBlockField{D, M, G, T}) where {D, M, G, T}
     S = M + 2G
-    z = zero(MArray{NTuple{D, S}, T})
-    push!(f.u, z)
-    return length(f.u)
+    append!(f.u, Iterators.repeated(zero(T), S^D))
+    return length(f)
 end
 
 """
@@ -161,11 +166,8 @@ Creates a series of new blocks returns the final length.
 """
 function newblocks!(f::ScalarBlockField{D, M, G, T}, n) where {D, M, G, T}
     S = M + 2G
-    for i in 1:n
-        z = zero(MArray{NTuple{D, S}, T})
-        push!(f.u, z)
-    end
-    return length(f.u)
+    append!(f.u, Iterators.repeated(zero(T), n * S^D))
+    return length(f)
 end
 
 """
@@ -173,11 +175,8 @@ Creates a new block and returns its index.
 """
 function newblock!(f::VectorBlockField{D, M, G, T}) where {D, M, G, T}
     S = M + 2G + 1
-    MT = Tuple{ntuple(_ -> S, Val(D))..., D}
-    
-    z = zero(MArray{MT, Float64})
-    push!(f.u, z)
-    return length(f.u)
+    append!(f.u, Iterators.repeated(zero(T), D * S^D))
+    return length(f)
 end
 
 """
@@ -185,12 +184,8 @@ Creates a series of new blocks returns the final length.
 """
 function newblocks!(f::VectorBlockField{D, M, G, T}, n) where {D, M, G, T}
     S = M + 2G + 1
-    MT = Tuple{ntuple(_ -> S, Val(D))..., D}
-    for i in 1:n
-        z = zero(MArray{MT, Float64})
-        push!(f.u, z)
-    end
-    return length(f.u)
+    append!(f.u, Iterators.repeated(zero(T), n * D * S^D))
+    return length(f)
 end
 
 """
@@ -201,21 +196,6 @@ function newblock!(f, n)
     @assert n1 == n "Block number assertion failed.  Some fields are in an inconsistent state"
 end
 
-
-"""
-Delete block at index `blk` by moving the last block into `blk`
-"""
-function Base.deleteat!(f::AbstractBlockField, blk)
-    nlast = length(f.u)
-    last = pop!(f.u)
-
-    # Did we remove the last block?
-    (blk > length(f.u)) && return 0
-
-    f.u[blk] = last
-
-    return nlast
-end
 
 # Helper functions that should reduce to compile-time constants
 Base.eltype(::AbstractBlockField{D, M, G, T}) where {D, M, G, T} = T
@@ -467,7 +447,7 @@ Traverses a tree of Broadcasted elements and changes each Broadcast type with `T
 of the underlying ScalarBlockField. 
 """
 @inline function mapbroadcast(T::Type{Z}, i, x::Broadcast.Broadcasted) where {Z}
-    Broadcasted{T}(x.f, mapbroadcast(T, i, x.args))
+    Broadcast.Broadcasted{T}(x.f, mapbroadcast(T, i, x.args))
 end
 
 @inline mapbroadcast(T::Type{Z}, i, args::Tuple{}) where {Z} = ()
