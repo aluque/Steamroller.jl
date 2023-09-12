@@ -478,7 +478,7 @@ overlaprange(f::ScalarBlockField, k) = overlapfirst(f, k):overlaplast(f, k)
 bndindex(::VectorBlockField{D, M, G}, k) where {D, M, G} = k == -1 ? (G + 1) : (G + M + 1)
 
 """ Return a CartesianIndices for ghost cells at a given face provided as a CartesianIndex. """
-function ghostindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
+@inline function ghostindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
     @assert isface(face)
     
     CartesianIndices(ntuple(dim -> (face[dim] == 0 ? validrange(f) :
@@ -490,7 +490,7 @@ end
 Return a CartesianIndices for the cells that overlap with ghost from a neighbor at
 face `face`. 
 """
-function overlapindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
+@inline function overlapindices(f::ScalarBlockField{D}, face::CartesianIndex{D}) where {D}
     @assert isface(face)
     
     CartesianIndices(ntuple(dim -> (face[dim] == 0 ? validrange(f) :

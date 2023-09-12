@@ -149,16 +149,24 @@ end
 Fill ghost cells by copying neighboring cells in the same layer.
 `v` contains a vector with `Neighbor` relations.
 """
-function fill_ghost_copy!(u::ScalarBlockField{D}, v::Vector{Neighbor{D}}) where {D}
+function fill_ghost_copy!(u::ScalarBlockField{D, M, G}, v::Vector{Neighbor{D}}) where {D, M, G}
     @batch for edge in v
-        overlap = overlapindices(u, edge.face)
-        ghost = ghostindices(u, -edge.face)
+        @inline _fill_ghost_copy!(u, edge)
+    end
+end
+
+@generated function _fill_ghost_copy!(u::ScalarBlockField{D, M, G}, edge::Neighbor{D}) where {D, M, G}
+    quote
+        f = edge.face
         
         ufrom = u[edge.from]
         uto = u[edge.to]
         
-        for I in CartesianIndices(overlap)
-            uto[ghost[I]] = ufrom[overlap[I]]
+        @nloops $D i d->(f[d] == 0 ? (1:M) : (1:G)) begin
+            ifrom = @ntuple $D d->(f[d] == 0 ? G + i_d : (f[d] == -1 ? i_d + G : i_d + M))
+            ito =   @ntuple $D d->(f[d] == 0 ? G + i_d : (f[d] == 1  ? i_d : i_d + M + G))
+            
+            uto[ito...] = ufrom[ifrom...]
         end
     end
 end
