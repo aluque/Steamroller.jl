@@ -27,6 +27,7 @@ include("constants.jl")
 const co = constants
 
 include("bracket.jl")
+include("lookup.jl")
 include("mesh.jl")
 include("blocklayer.jl")
 include("tree.jl")
