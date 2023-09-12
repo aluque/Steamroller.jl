@@ -146,7 +146,38 @@ Apply Red-black Gauss-Seidel in a block.
 * `geom` is a geometry.
 * `parity` should be either Val(0) or Val(1).
 """
-function gauss_seidel!(u::ScalarBlockField{D, M, G},
+@generated function gauss_seidel!(u::ScalarBlockField{D, M, G},
+                                   b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
+                                   ld::LaplacianDiscretization{D},
+                                   geom::GT, par::RedBlack{P}) where {D, M, G, GT, P}
+    D1 = D - 1
+    quote
+        gbl0 = global_first(blkpos, $M)
+        # Index 1 steps in strides of 2; all other indices have strides of one
+        @nloops $D i d->(d == 1 ? ((G + 1):2:(G + M)) : ((G + 1):(G + M))) begin
+            # Compute parity of P combined with indices 2, 3...
+            p = $P
+            @nexprs $D1 d->(p = xor(p, i_{d+1} & 1))
+            
+            # Local index
+            I = CartesianIndex(@ntuple $D d->(d == 1 ? i_d + p : i_d))            
+
+            # Global index.  This is needed for cylindrical geometry.
+            J = CartesianIndex(@ntuple $D d->(I[d] - G + gbl0[d] - 1))
+
+            c = diagelm(ld, geom, Val(:lhs), J)            
+            Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
+            
+            #u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
+            v = muladd(s, b[I, blk], Lu)
+            u[I, blk] = muladd(-(ω / c), v, u[I, blk])
+        end
+    end
+end
+
+
+# Non-@generated version, kept for reference
+function _gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
                        ld::LaplacianDiscretization{D},
                        geom::GT, par::RedBlack{P}) where {D, M, G, GT, P}
@@ -167,7 +198,6 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
         u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
     end
 end
-
 
 function gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
