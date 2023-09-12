@@ -24,20 +24,29 @@ struct LookupTable{TX, TY, F, G, GI}
 end
 
 
-@inline function (tbl::LookupTable)(x)
+@inline Base.@assume_effects :foldable function prefetch(tbl::LookupTable, x)
     fx = tbl.f(x)
     
     i = searchsortedlast(tbl.fx, fx)
 
     if i == 0
         # Allow constant-value extrapolation below the range
-        return tbl.ginv(tbl.gy[1])
+        return (1, zero(promote_type(eltype(tbl.fx), typeof(fx))))
     end
     
-    checkbounds(tbl.fx, i)
-    checkbounds(tbl.fx, i + 1)
+    @boundscheck checkbounds(tbl.fx, i)
+    @boundscheck checkbounds(tbl.fx, i + 1)
     
     @inbounds w = (fx - tbl.fx[i]) / (tbl.fx[i + 1] - tbl.fx[i])
+    return (i, w)
+end
+
+_prefetch(tbl, x, ::Nothing) = prefetch(tbl, x)
+_prefetch(tbl, x, p) = p
+
+@inline function (tbl::LookupTable)(x, prefetch=nothing)
+    (i, w) = _prefetch(tbl, x, prefetch)
+
     @inbounds gy = w * tbl.gy[i + 1] + (1 - w) * tbl.gy[i]
 
     return tbl.ginv(gy)
@@ -45,8 +54,6 @@ end
 
 
 """    
-    $(SIGNATURES)
-
     Guess a range from a vector `v`.  Raises a warning if the values are too far 
     from uniform.
 """
@@ -57,29 +64,33 @@ function approxrange(v::AbstractVector; atol::Real=0, rtol::Real=0.001)
     hmean = sum(h) / length(h)
     
     if !all(x -> isapprox(x, hmean; atol, rtol), h)
-        @warn "The provided vector is not close enough to uniform range: lookup will be much slower."
-
         # Note type instability
         return v
-        # throw(ArgumentError("The provided vector is not close enough to uniform range"))
     end
 
     l = length(v)
     
-    return range(v[begin], v[end], l)
+    return LinRange(v[begin], v[end], l)
 end
 
 
 """
-    $(SIGNATURES)
-
     Load a lookuptable from a delimited file.
 """
-function loadtable(fname; xcol=1, ycol=2, f=identity, g=identity, ginv=identity, kw...)
-    data = readdlm(fname)
+function loadtable(fname, T::Type=Float64; resample_into=nothing,
+                   xcol=1, ycol=2, f=identity, g=identity, ginv=identity, kw...)
+    data = readdlm(fname, T)
     
     fx = approxrange(f.(data[:, xcol]); kw...)
     gy = g.(data[:, ycol])
 
+    if !isnothing(resample_into)
+        fx1 = LinRange(fx[begin], fx[end], resample_into)
+        gy1 = linear_interpolation(fx, gy).(fx1)
+
+        (fx, gy) = (fx1, gy1)
+    end
+    
     LookupTable(fx, gy; f, g, ginv)
 end
+

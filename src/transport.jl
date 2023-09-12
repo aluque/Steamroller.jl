@@ -91,18 +91,25 @@ struct CWITransportModel{T, T1, T2, T3} <: AbstractTransportModel
     mu::T2
     dif::T3
     
-    function CWITransportModel(alpha_fname, mu_fname, dif_fname)
-        alpha_tbl = loadtable(alpha_fname, f=log10)
-        mu_tbl = loadtable(mu_fname, f=log10)
-        dif_tbl = loadtable(dif_fname, f=log10)
+    function CWITransportModel{T}(alpha_fname, mu_fname, dif_fname; resample_into=1000) where T
+        # alpha_tbl = loadtable(alpha_fname, f=Base.FastMath.log10)
+        # mu_tbl = loadtable(mu_fname, f=Base.FastMath.log10)
+        # dif_tbl = loadtable(dif_fname, f=Base.FastMath.log10)
 
-        new{Float64, typeof(alpha_tbl),
-            typeof(mu_tbl), typeof(dif_tbl)}(0.0, alpha_tbl, mu_tbl, dif_tbl)
+        alpha_tbl = loadtable(alpha_fname; resample_into)
+        mu_tbl = loadtable(mu_fname; resample_into)
+        dif_tbl = loadtable(dif_fname; resample_into)
+        
+        # This correction factor is to prevent roundoff errors to produce a negative townsend(...)
+        # It's faster to correct this than add an abs(...) below
+        eta = convert(T, -alpha_tbl.ginv(minimum(alpha_tbl.gy)) * (1 + 1e-7))
+        new{T, typeof(alpha_tbl),
+            typeof(mu_tbl), typeof(dif_tbl)}(eta, alpha_tbl, mu_tbl, dif_tbl)
     end
 end
 
 @inline mobility(m::CWITransportModel, eabs) = m.mu(eabs)
 @inline diffusion(m::CWITransportModel, eabs) = m.dif(eabs)
 @inline nettownsend(m::CWITransportModel, eabs) = m.alpha(eabs)
-@inline townsend(m::CWITransportModel, eabs) = m.alpha(eabs) - m.eta
-@inline netionization(m::CWITransportModel, eabs) = m.alpha(eabs) * eabs * m.mu(eabs)
+@inline townsend(m::CWITransportModel, eabs) = m.alpha(eabs) + m.eta
+@inline netionization(m::CWITransportModel, eabs) = nettownsend(m, eabs) * eabs * m.mu(eabs)

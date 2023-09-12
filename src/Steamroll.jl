@@ -1,5 +1,6 @@
 module Steamroll
 
+using DelimitedFiles
 using Base.Cartesian
 using StaticArrays
 using ElasticArrays
@@ -14,6 +15,7 @@ using Logging
 using Dates
 using Format
 using Base: @propagate_inbounds
+using Interpolations
 
 const BlockIndex = Int
 
