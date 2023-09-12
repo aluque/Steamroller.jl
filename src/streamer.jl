@@ -54,28 +54,28 @@ struct StreamerFields{T, K, S <: ScalarBlockField,
     """
     Initialize a `StreamerFields` instance.
     """
-    function StreamerFields(T, K, D, M, H, flux_same_as_e=false)
+    function StreamerFields(T, K, D, M, H, storage=Val(:contiguous), flux_same_as_e=false)
         TH = SVector{H, T}
 
-        kscalars(k) = SVector{K}(ntuple(i -> ScalarBlockField{D, M, 2, T}(), Val(K)))
+        kscalars(k) = SVector{K}(ntuple(i -> ScalarBlockField{D, M, 2, T}(storage), Val(K)))
         n = kscalars(K)
         n1 = kscalars(K)
         dn = [kscalars(K) for _ in 1:3]
         
-        q = ScalarBlockField{D, M, 2, T}()
-        q1 = ScalarBlockField{D, M, 2, T}()
+        q = ScalarBlockField{D, M, 2, T}(storage)
+        q1 = ScalarBlockField{D, M, 2, T}(storage)
         
-        u = ScalarBlockField{D, M, 2, T}()
-        u1 = ScalarBlockField{D, M, 2, T}()
-        r = ScalarBlockField{D, M, 2, T}()
+        u = ScalarBlockField{D, M, 2, T}(storage)
+        u1 = ScalarBlockField{D, M, 2, T}(storage)
+        r = ScalarBlockField{D, M, 2, T}(storage)
 
-        e = VectorBlockField{D, M, 2, T}()
+        e = VectorBlockField{D, M, 2, T}(storage)
 
-        flux = flux_same_as_e ? e : VectorBlockField{D, M, 2, T}()
+        flux = flux_same_as_e ? e : VectorBlockField{D, M, 2, T}(storage)
 
-        eabs = ScalarBlockField{D, M, 2, T}()
-        m = ScalarBlockField{D, M, 3, T}()
-        refdelta = ScalarBlockField{D, 1, 0, RefDelta}()
+        eabs = ScalarBlockField{D, M, 2, T}(storage)
+        m = ScalarBlockField{D, M, 3, T}(storage)
+        refdelta = ScalarBlockField{D, 1, 0, RefDelta}(Val(:contiguous))
 
         maxdt = Vector{T}(undef, 2^14)
         
