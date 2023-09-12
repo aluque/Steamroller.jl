@@ -41,14 +41,14 @@ end
 """
 Velocity in transport model `m` for an electric field `eabs`.
 """
-@inline mobility(m::BagheriTransportModel, eabs) = m.μ0 * eabs^m.eμ
+@inline mobility(m::BagheriTransportModel, eabs) = @fastmath m.μ0 * eabs^m.eμ
 #@inline mobility(m::BagheriTransportModel, eabs) = 0.0372193
 
 
 """
 Diffusion rate in transport model `m` for an electric field `eabs`.
 """
-@inline diffusion(m::BagheriTransportModel, eabs) = m.D0 * eabs^m.eD
+@inline diffusion(m::BagheriTransportModel, eabs) = @fastmath m.D0 * eabs^m.eD
 
 
 """
@@ -57,7 +57,7 @@ Townsend coefficient (excluding attachment) in transport model `m` for an electr
 @inline function townsend(m::BagheriTransportModel, eabs)
     (;α0, α1, eα, mα, η) = m
 
-    (α0 + α1 / eabs^eα) * exp(mα / eabs)
+    @fastmath (α0 + α1 / eabs^eα) * exp(mα / eabs)
 end
 
 """
@@ -66,7 +66,7 @@ Townsend coefficient in transport model `m` for an electric field `eabs`.
 @inline function nettownsend(m::BagheriTransportModel, eabs)
     (;α0, α1, eα, mα, η) = m
 
-    (α0 + α1 / eabs^eα) * exp(mα / eabs) - η
+    @fastmath (α0 + α1 / eabs^eα) * exp(mα / eabs) - η
 end
 
 
