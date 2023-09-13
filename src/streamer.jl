@@ -391,3 +391,67 @@ function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditi
 
     return conn
 end
+
+
+# """
+# Execute the full streamer simulation.
+# """
+# function run!(fields::StreamerFields{T}, conf, tree, conn, tend, min_dt; min_dt=1e-16, output=[],
+#               refine_every=2, progress_every=50, output_callbacks=[])
+#     output = map(x->convert(T, x), output)
+
+#     # Measure times
+#     elapsed_step = 0.0
+#     elapsed_refine = 0.0
+#     elapsed_connectivity = 0.0
+    
+#     t = zero(T)
+#     dt = zero(T)
+
+#     @withprogress begin
+#         iter = 0
+#         while t < tend            
+#             elapsed_step += @elapsed (t, dt) = sr.step!(fields, conf, tree, conn, t,
+#                                                         get(output, 1, convert(T, Inf)),
+#                                                         Val(:ssprk3))
+
+#             if t > 0 && dt < min_dt
+#                 @warn "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
+#                 break
+#             end
+
+#             if !isempty(output) && isapprox(t, first(output))
+#                 for f in output_callbacks
+#                     f()
+#                 end
+#             end
+
+#             if (iter % refine_every) == 0                
+#                 elapsed_refine += @elapsed sr.refine!(fields, conf, tree, conn, t, dt;
+#                                                       minlevel=8, maxlevel=10)
+#                 elapsed_connectivity += @elapsed conn = sr.connectivity(tree, stencil)
+#             end
+
+
+#             if (iter % progress_every) == 0
+#                 @logprogress frac
+#                 msg = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
+#                                Pair{Symbol, Any}[:t => t,
+#                                                  :dt => dt,
+#                                                  :iter => iter,
+#                                                  :max_level => findlast(!isempty, tree),
+#                                                  :nblocks => nblocks(tree),
+#                                                  :elapsed_step => elapsed_step,
+#                                                  :elapsed_refine => elapsed_refine,
+#                                                  :elapsed_connectivity => elapsed_connectivity]), "\n")
+#                 io = IOBuffer()
+#                 printstyled(IOContext(io, :color=>true), msg, color=:blue)
+#                 push!(Logging.current_logger().sticky_messages, :vars=>String(take!(io)))
+#             end
+            
+#             iter += 1
+#         end
+#     end
+
+#     return (;t, dt, iter, elapsed_step, elapsed_refine, elapsed_connectivity)
+# end
