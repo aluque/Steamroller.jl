@@ -1,8 +1,9 @@
+abstract type AbstractDiscretization{D, P}; end
 """
 Represent a Laplacian discretization in dimension D and order P.
 Only P=2 and P=4 are supported now.
 """
-struct LaplacianDiscretization{D,P}; end
+struct LaplacianDiscretization{D,P} <: AbstractDiscretization{D, P}; end
 
 
 """
@@ -57,12 +58,16 @@ function _exprarray(expr)
     end    
 end
 
+#= 
+Note: All the stencils defined here ignore the input `s`, which is only required for helmholtz
+discretizations.
+=#
 
 ##
 #  2D STENCILS
 ##
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -71,20 +76,20 @@ end
                    0  1  0]
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
     u[I]
 end
 
-@inline diagelm(::LaplacianDiscretization{2, 2},
+@inline diagelm(s, ::LaplacianDiscretization{2, 2},
                     ::CartesianGeometry, ::Val{:lhs}, J) = -4
 
 
 ## CYLINDRICAL
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CylindricalGeometry{1},
                               ::Val{:lhs})
@@ -94,7 +99,7 @@ end
                    0         2i / (2i - 1) 0]
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CylindricalGeometry{2},
                               ::Val{:lhs})
@@ -104,20 +109,20 @@ end
                    0                      1                0]
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CylindricalGeometry,
                               ::Val{:rhs})
     u[I]
 end
 
-@inline diagelm(::LaplacianDiscretization{2, 2},
+@inline diagelm(s, ::LaplacianDiscretization{2, 2},
                 ::CylindricalGeometry, ::Val{:lhs}, J) = -4
 
 
 # COMPACT 4TH ORDER 2D CARTESIAN
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -126,7 +131,7 @@ end
                    1    4  1] 6
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CartesianGeometry,
                               ::Val{:rhs})
@@ -135,13 +140,13 @@ end
                    0   1  0] 12
 end
 
-@inline diagelm(::LaplacianDiscretization{2, 4},
+@inline diagelm(s, ::LaplacianDiscretization{2, 4},
                     ::CartesianGeometry, ::Val{:lhs}, J) = -20 / 6
 
 
 # COMPACT 4TH ORDER 2D CYLINDRICAL
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{1},
                               ::Val{:lhs})
@@ -151,7 +156,7 @@ end
                    2i/(2i-1)            4*(1+i-8i^2+8i^3)/(2i-1)^3        2i/(2i-1)] 6
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{1},
                               ::Val{:rhs})
@@ -161,7 +166,7 @@ end
                    0       2i/(2i-1)  0] 12
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{2},
                               ::Val{:lhs})
@@ -171,7 +176,7 @@ end
                    2*(i-1)/(2i-1)                                        4          2i/(2i-1)] 6
 end
 
-@inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{2},
                               ::Val{:rhs})
@@ -182,13 +187,13 @@ end
 end
 
 
-@inline function diagelm(::LaplacianDiscretization{2, 4},
+@inline function diagelm(s, ::LaplacianDiscretization{2, 4},
                          ::CylindricalGeometry{N}, ::Val{:lhs}, J) where N
     i = J[N]
     -16*(1-5i+5i^2)/(1-2i)^2 / 6
 end
 
-# @inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+# @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
 #                               ::LaplacianDiscretization{2, 4},
 #                               ::CylindricalGeometry{2},
 #                               ::Val{:lhs})
@@ -198,7 +203,7 @@ end
 #                    2*(i-1)/(2i-1)    4   2i/(2i-1)] 6
 # end
 
-# @inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+# @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
 #                               ::LaplacianDiscretization{2, 4},
 #                               ::CylindricalGeometry{2},
 #                               ::Val{:rhs})
@@ -209,14 +214,14 @@ end
 # end
 
 
-# @inline function diagelm(::LaplacianDiscretization{2, 4},
+# @inline function diagelm(s, ::LaplacianDiscretization{2, 4},
 #                          ::CylindricalGeometry{N}, ::Val{:lhs}, J) where N
 #     return -20 / 6
 # end
 
 
 
-# @inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+# @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
 #                               ::LaplacianDiscretization{2, 4},
 #                               ::CylindricalGeometry{2},
 #                               ::Val{:lhs})
@@ -232,7 +237,7 @@ end
 #                      a1  b a2] 6)
 # end
 
-# @inline function applystencil(u, I::CartesianIndex{2}, J::CartesianIndex{2},
+# @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
 #                               ::LaplacianDiscretization{2, 4},
 #                               ::CylindricalGeometry{2},
 #                               ::Val{:rhs})
@@ -247,7 +252,7 @@ end
 # end
 
 
-# @inline function diagelm(::LaplacianDiscretization{2, 4},
+# @inline function diagelm(s, ::LaplacianDiscretization{2, 4},
 #                          ::CylindricalGeometry{N}, ::Val{:lhs}, J) where N
 #     i = J[N]
 #     c = evalpoly(i, (272, 240, -240)) / evalpoly(i, (13, 12, -12))
@@ -262,7 +267,7 @@ end
 #  3D STENCILS
 ##
 
-@inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
+@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -279,17 +284,17 @@ end
                     0   0   0]]
 end
 
-@inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
+@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
     u[I]
 end
 
-@inline diagelm(::LaplacianDiscretization{3, 2},
+@inline diagelm(s, ::LaplacianDiscretization{3, 2},
                     ::CartesianGeometry, ::Val{:lhs}, J) = -6
 
-@inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
+@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -306,7 +311,7 @@ end
                     0   1   0]] 6
 end
 
-@inline function applystencil(u, I::CartesianIndex{3}, J::CartesianIndex{3},
+@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
                               ::Val{:rhs})
@@ -323,5 +328,5 @@ end
                     0   0   0]] 12
 end
 
-@inline diagelm(::LaplacianDiscretization{3, 4},
+@inline diagelm(s, ::LaplacianDiscretization{3, 4},
                 ::CartesianGeometry, ::Val{:lhs}, J) = -4

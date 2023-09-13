@@ -9,6 +9,8 @@ Compute the derivatives resulting from the flux of electrons.
                               dne::ScalarBlockField{D, M, G},
                               flux::VectorBlockField{D, M, G},
                               h, geom) where {D, M, G}
+    isleaf(tree, level, blkpos) || return
+
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     

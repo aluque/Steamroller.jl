@@ -4,8 +4,17 @@ Code to produce a streamer simulation.
 
 """
 Fields required to run a streamer fluid simulation with K species (electrons are assumed to be first).
+
+* `T` is the floating-point type (e.g. Float64 or Float32).
+* `K` is the number of species.
+* `L` is the number of photoionization fields (can be zero).
+* `S` is the type of the scalar fields.
+* `V` is the type of the vector fields.
+* `M` is the type of the scalar field for the refinement marker.
+* `R` is the type of the scalar field for the change in refinement level (different type bc 
+    it contains a single scalar per block.)
 """
-struct StreamerFields{T, K, S <: ScalarBlockField,
+struct StreamerFields{T, K, L, S <: ScalarBlockField,
                       V <: VectorBlockField, M <: ScalarBlockField,
                       R <: ScalarBlockField}
     "Species density"
@@ -40,6 +49,9 @@ struct StreamerFields{T, K, S <: ScalarBlockField,
 
     "Flux vector.  In many cases can be the same as the electric field vector"
     flux::V
+
+    "Photoionization fields."
+    photo::SVector{L, S}
     
     "Refinement marker"
     m::M
@@ -54,7 +66,7 @@ struct StreamerFields{T, K, S <: ScalarBlockField,
     """
     Initialize a `StreamerFields` instance.
     """
-    function StreamerFields(T, K, D, M, H, storage=Val(:contiguous), flux_same_as_e=false)
+    function StreamerFields(T, K, L, D, M, H, storage=Val(:contiguous), flux_same_as_e=false)
         TH = SVector{H, T}
 
         kscalars(k) = SVector{K}(ntuple(i -> ScalarBlockField{D, M, 2, T}(storage), Val(K)))
@@ -73,6 +85,8 @@ struct StreamerFields{T, K, S <: ScalarBlockField,
 
         flux = flux_same_as_e ? e : VectorBlockField{D, M, 2, T}(storage)
 
+        photo = SVector{L}(ntuple(i -> ScalarBlockField{D, M, 2, T}(storage), Val(L)))
+        
         eabs = ScalarBlockField{D, M, 2, T}(storage)
         m = ScalarBlockField{D, M, 3, T}(storage)
         refdelta = ScalarBlockField{D, 1, 0, RefDelta}(Val(:contiguous))
@@ -80,8 +94,8 @@ struct StreamerFields{T, K, S <: ScalarBlockField,
         maxdt = Vector{T}(undef, 2^14)
         
         return new{
-            T, K, typeof(q), typeof(e), typeof(m), typeof(refdelta)
-        }(n, n1, dn, q, q1, u, u1, r, eabs, e, flux, m, refdelta, flux_same_as_e, maxdt)
+            T, K, L, typeof(q), typeof(e), typeof(m), typeof(refdelta)
+        }(n, n1, dn, q, q1, u, u1, r, eabs, e, flux, photo, m, refdelta, flux_same_as_e, maxdt)
     end
 end
 
@@ -99,7 +113,7 @@ end
 Add a block to each field in the `StreamerFields` set of fields.
 """
 function newblock!(sf::StreamerFields)
-    (;n, n1, dn, q, q1, u, u1, r, eabs, e, flux, m, refdelta, flux_same_as_e) = sf
+    (;n, n1, dn, q, q1, u, u1, r, eabs, e, flux, photo, m, refdelta, flux_same_as_e) = sf
     
     # We obtain the block number of a field and then check that all fields create the same block number
     j = newblock!(q)
@@ -117,6 +131,8 @@ function newblock!(sf::StreamerFields)
     newblock!(eabs, j)
     newblock!(e, j)
     flux_same_as_e || newblock!(flux, j)
+    foreach(i->newblock!(photo[i], j), eachindex(photo))
+
     newblock!(m, j)
     newblock!(refdelta, j)
 
@@ -168,6 +184,7 @@ struct StreamerConf{T, D,
                     L  <: LaplacianDiscretization,
                     TR <: AbstractTransportModel,
                     CH <: AbstractChemistry,
+                    PH <: PhotoionizationModel,
                     R  <: AbstractRefinement}
     "Spatial discretization at level 1"
     h::T
@@ -193,6 +210,9 @@ struct StreamerConf{T, D,
     "Chemistry model"
     chem::CH
 
+    "Photoionization model"
+    phmodel::PH
+    
     "Refinement criterium"
     ref::R
 
@@ -202,12 +222,12 @@ end
 
 
 """
-Compute derivatives starting from densities ne, ni and stores them in dne, dnh.
+Compute derivatives starting from densities ni and stores them in dni.
 """
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn, fmgiter=2) where {T}
-    (;q, q1, r, q, u, u1, e, flux, eabs, maxdt) = fld
-    (;eb, pbc, h, trans, chem, geom, lpl, pbc, fbc) = conf
+    (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
+    (;eb, pbc, h, trans, chem, phmodel, geom, lpl, pbc, fbc) = conf
     
     netcharge!(tree, q, ni, chem)
 
@@ -247,24 +267,12 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     resize!(maxdt, max(length(maxdt), length(ne)))
     flux!(tree, flux, ne, e, eabs, h, trans, maxdt)
     restrict_flux!(flux, conn)
-    block_derivs!(tree, dni, ni, fld, conf)
-end
 
-
-"""
-Compute the derivatives in a block/tree and store them in dne and dnh.
-"""
-@bkernel function block_derivs!((tree, level, blkpos, blk), dni, n,
-                                fld::StreamerFields, conf::StreamerConf)
-    
-    (;e, flux, eabs) = fld
-    (;h, trans, chem, geom) = conf
-    isleaf(tree, level, blkpos) || return
-    
-    chemderivs!((tree, level, blkpos, blk), dni, n, eabs, chem, Val{true}())    
-    fluxderivs!((tree, level, blkpos, blk), dni[1], flux, h, geom)
-
-    nothing
+    chemderivs!(tree, dni, ni, eabs, chem, Val{true}(), Val{true}())    
+    # Here goes photo-ionization
+    photoionization!(tree, dni, photo, r, u1, phmodel, h, conn, geom)
+    chemderivs!(tree, dni, ni, eabs, chem, Val{false}(), Val{false}())
+    fluxderivs!(tree, dni[1], flux, h, geom)
 end
 
 
@@ -344,3 +352,4 @@ function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, d
         
     applydelta!(tree, refdelta, freeblocks, fld, minlevel, maxlevel)
 end
+

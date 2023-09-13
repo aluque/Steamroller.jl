@@ -9,6 +9,10 @@ laplace operator (with unit grid spacing). s is the factor at level 1,
 if you are solving Poisson's equation ∇²u = -ρ/ϵ, set s = h^2/ϵ where
 h is the grid spacing at level 1.  If you want to use electron and ion
 densities, use s = eh^2/ϵ.
+
+With a discretization of type `HelmholtzDiscretization` this can also be used to solve
+Helmholtz's equation in the form Lu - s k² u + s b = 0.  Usually you want s = h^2 with h
+the grid spacing at level 1.
 """
 function fmg!(u, b, r, u1, s,
               tree, conn, geometry, bc, lpldisc;
@@ -142,13 +146,13 @@ Apply Red-black Gauss-Seidel in a block.
 * `s` is a scaling parameter.
 * `blkpos` is the block coordinate of the block.
 * `blk` is the block index.
-* `ld` is a `LaplacianDiscretization`
+* `ld` is a `AbstractDiscretization`
 * `geom` is a geometry.
 * `parity` should be either Val(0) or Val(1).
 """
 @generated function gauss_seidel!(u::ScalarBlockField{D, M, G},
                                    b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
-                                   ld::LaplacianDiscretization{D},
+                                   ld::AbstractDiscretization{D},
                                    geom::GT, par::RedBlack{P}) where {D, M, G, GT, P}
     D1 = D - 1
     quote
@@ -165,8 +169,8 @@ Apply Red-black Gauss-Seidel in a block.
             # Global index.  This is needed for cylindrical geometry.
             J = CartesianIndex(@ntuple $D d->(I[d] - G + gbl0[d] - 1))
 
-            c = diagelm(ld, geom, Val(:lhs), J)            
-            Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
+            c = diagelm(s, ld, geom, Val(:lhs), J)            
+            Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
             
             #u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
             v = muladd(s, b[I, blk], Lu)
@@ -179,7 +183,7 @@ end
 # Non-@generated version, kept for reference
 function _gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
-                       ld::LaplacianDiscretization{D},
+                       ld::AbstractDiscretization{D},
                        geom::GT, par::RedBlack{P}) where {D, M, G, GT, P}
     gbl0 = global_first(blkpos, M)
     
@@ -191,9 +195,9 @@ function _gauss_seidel!(u::ScalarBlockField{D, M, G},
         I = Base.setindex(I1, I1[1] + p, 1)
 
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
-        c = diagelm(ld, geom, Val(:lhs), J)
+        c = diagelm(s, ld, geom, Val(:lhs), J)
         
-        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
 
         u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
     end
@@ -201,7 +205,7 @@ end
 
 function gauss_seidel!(u::ScalarBlockField{D, M, G},
                        b::ScalarBlockField{D, M, G}, ω, s, blkpos, blk,
-                       ld::LaplacianDiscretization{D},
+                       ld::AbstractDiscretization{D},
                        geom::GT, par::FourColors{P1, P2}) where {D, M, G, GT, P1, P2}
     gbl0 = global_first(blkpos, M)
     
@@ -219,9 +223,9 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
         I = Base.setindex(Base.setindex(I1, I1[1] + p1, 1), I1[2] + p2, 2)
 
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
-        c = diagelm(ld, geom, Val(:lhs), J)
+        c = diagelm(s, ld, geom, Val(:lhs), J)
         
-        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
 
         u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
     end
@@ -244,7 +248,7 @@ Apply GS both read and black at a given level `n` times, updating the ghost cell
 as needed.  This function can be safely iterated
 """
 function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
-                            lpldisc::LaplacianDiscretization{D, 2}) where D
+                            lpldisc::AbstractDiscretization{D, 2}) where D
     for i in 1:n
         gauss_seidel_level!(u, b, ω, s, tree[l],
                             lpldisc, geometry, RedBlack{0}())
@@ -262,7 +266,7 @@ end
 
 # For the 4th order discretization, use 4 colors.
 function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
-                            lpldisc::LaplacianDiscretization{D, 4}) where D
+                            lpldisc::AbstractDiscretization{D, 4}) where D
     for i in 1:n
         gauss_seidel_level!(u, b, ω, s, tree[l],
                             lpldisc, geometry, FourColors{0, 0}())
@@ -305,14 +309,14 @@ in `stencil_type` and a geometry also as a type in `geom`.
 function residual!(r::ScalarBlockField{D, M, G},
                    u::ScalarBlockField{D, M, G},
                    b::ScalarBlockField{D, M, G}, s, blkpos, blk,
-                   ld::LaplacianDiscretization{D},
+                   ld::AbstractDiscretization{D},
                    geom::GT) where {D, M, G, GT}
     gbl0 = global_first(blkpos, M)
     
     for I in CartesianIndices(ntuple(d -> validrange(r), Val(D)))
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
 
         r[I, blk] = -(b[I, blk] + Lu / s)
     end
@@ -327,13 +331,13 @@ See residual! for details on the other parameters
 function residual_subblock!(r::ScalarBlockField{D, M, G},
                             u::ScalarBlockField{D, M, G},
                             b::ScalarBlockField{D, M, G}, s, blkpos, blk,
-                            geom, ld::LaplacianDiscretization{D}, subblock) where {D, M, G}
+                            geom, ld::AbstractDiscretization{D}, subblock) where {D, M, G}
     gbl0 = global_first(blkpos, M)
     
     for I in subblockindices(r, subblock)
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Lu = applystencil(u[blk], I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
 
         r[I, blk] = -(b[I, blk] + Lu / s)
     end
@@ -359,14 +363,15 @@ Lu + Rb = 0 (with L a lhs and R an rhs operator).
 function rhs!(b1::ScalarBlockField{D, M, G},
               b::ScalarBlockField{D, M, G},
               blkpos, blk,
-              ld::LaplacianDiscretization{D},
+              ld::AbstractDiscretization{D},
               geom::GT) where {D, M, G, GT}
     gbl0 = global_first(blkpos, M)
     
     for I in CartesianIndices(ntuple(d -> validrange(b1), Val(D)))
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Rb = applystencil(b[blk], I, J, ld, geom, Val(:rhs))
+        # s = nothing here bc it is ignored
+        Rb = applystencil(b[blk], nothing, I, J, ld, geom, Val(:rhs))
         b1[I, blk] = Rb
     end
 end

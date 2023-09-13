@@ -61,12 +61,15 @@ Townsend coefficient (excluding attachment) in transport model `m` for an electr
 end
 
 """
+Townsend attachment coefficient in transport model `m` for an electric field `eabs`.
+"""
+@inline attachment(m::BagheriTransportModel, eabs) = m.η
+
+"""
 Townsend coefficient in transport model `m` for an electric field `eabs`.
 """
 @inline function nettownsend(m::BagheriTransportModel, eabs)
-    (;α0, α1, eα, mα, η) = m
-
-    @fastmath (α0 + α1 / eabs^eα) * exp(mα / eabs) - η
+    @fastmath townsend(m, eabs) - attachment(m, eabs)
 end
 
 
@@ -111,5 +114,6 @@ end
 @inline mobility(m::CWITransportModel, eabs) = m.mu(eabs)
 @inline diffusion(m::CWITransportModel, eabs) = m.dif(eabs)
 @inline nettownsend(m::CWITransportModel, eabs) = m.alpha(eabs)
+@inline attachment(m::CWITransportModel, eabs) = m.eta
 @inline townsend(m::CWITransportModel, eabs) = m.alpha(eabs) + m.eta
 @inline netionization(m::CWITransportModel, eabs) = nettownsend(m, eabs) * eabs * m.mu(eabs)
