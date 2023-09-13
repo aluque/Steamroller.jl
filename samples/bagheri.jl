@@ -93,9 +93,6 @@ function _main(;
                # Output times
                output=0:1e-9:16e-9,
 
-               # Minimul dt.  Stop if the required dt is smaller than this.
-               min_dt=T(1e-16),
-
                # Storage mode:
                #  :contiguous is reasonably fast
                #  :vector can be faster for 3d computations but compilation may also be very long
@@ -178,6 +175,7 @@ function _main(;
 
     logger = Logging.current_logger()
     local msg
+    min_dt = 1e-16
     
     @withprogress begin
         iter = 0
