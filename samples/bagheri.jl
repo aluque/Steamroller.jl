@@ -84,6 +84,25 @@ function _main(;
                # stay for a while.  This is this persistence time, in seconds.
                refine_persistence=T(2e-10),
                
+               # End of density-based refinement
+               refine_density_upto=T(4e-9),
+
+               # Refine up to this value in the density criterium
+               refine_density_h=T(1e-5),
+
+               # Refine where density is above this in the density criterium
+               refine_density_value=T(1e16),
+               
+               # Do not derefine if the resulting spacing is larger than this
+               derefine_max_h=T(20e-6),
+               
+               # Do not derefine below this level
+               refine_min_h=T(3e-6),
+
+               # The parameters for the Teunissen refinement criterium
+               refine_teunissen_c0=T(0.5),
+               refine_teunissen_c1=T(1.2),
+               
                # Plot the evolution of the streamer?
                plot=false,
                
@@ -97,6 +116,8 @@ function _main(;
                #  :contiguous is reasonably fast
                #  :vector can be faster for 3d computations but compilation may also be very long
                #   (hours perhaps).
+               storage=:contiguous,
+
                # Order of the poisson equation (2 and 4 are allowed).
                poisson_order=2
                )
@@ -105,10 +126,11 @@ function _main(;
     
     # This makes block size of 1 cm.
     h = T(1.25e-2) / M
-
-    fields = sr.StreamerFields(T, 2, length(phmodel), D, M, H, Val(:contiguous))
+    derefine_minlevel = sr.levelabove(derefine_max_h, h)
+    refine_maxlevel = sr.levelbelow(refine_min_h, h)
+        
+    fields = sr.StreamerFields(T, 2, length(phmodel), D, M, H, Val(storage))
     tree = sr.Tree(D, CartesianIndices(ntuple(i -> rootsize[i], Val(D))), maxlevel)
-
 
     # Boundary conditions for the Poisson equation
     pbc = sr.boundaryconditions(((1, -1), (-1, -1)))
@@ -133,15 +155,15 @@ function _main(;
     chem = sr.NetIonization(trans)
 
     # The Teunissen refinement criterium based on the electric field
-    tref = sr.TeunissenRef(fields.eabs, trans, T(0.5), T(1.2))
+    tref = sr.TeunissenRef(fields.eabs, trans, refine_teunissen_c0, refine_teunissen_c1)
 
     # A refinement creiterium based on the density of some species (here ions)    
-    eref = sr.DensityRef(fields.n[2], T(1e16), h / 2^7)
+    nref = sr.DensityRef(fields.n[2], refine_density_value, refine_density_h)
 
-    # We combine the previus criteria for a final one, including a persistence and a time-limited
+    # We combine the previous criteria for a final one, including a persistence and a time-limited
     # version of the initial criterium.
     ref = sr.PersistingRef(refine_persistence,
-                           sr.AndRef(sr.TimeLimitedRef(T(0.0), T(1e-8), eref), tref))    
+                           sr.AndRef(sr.TimeLimitedRef(zero(T), refine_density_upto, nref), tref))
 
     # Set the streamer configuration
     conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, trans, chem,
@@ -154,7 +176,7 @@ function _main(;
     conditions = [1 => (r, z) -> nbg,                            # electrons
                   2 => (r, z) -> nbg + gaussian(N0, z, r, z0, σ) # ions
                   ]
-    conn = sr.initial_conditions!(fields, conf, tree, eref, conditions, minlevel=3, maxlevel=12)
+    conn = sr.initial_conditions!(fields, conf, tree, nref, conditions, minlevel=3, maxlevel=refine_maxlevel)
     
     @info "Number of blocks after initial conditions!" nblocks=sr.nblocks(tree)
     
@@ -163,8 +185,8 @@ function _main(;
     elapsed_refine = 0.0
     elapsed_connectivity = 0.0
     
-    t = convert(T, 0.0)
-    dt = convert(T, 0.0)
+    t = zero(T)
+    dt = zero(T)
 
     output = map(x->convert(T, x), output)
 
@@ -179,7 +201,7 @@ function _main(;
     
     @withprogress begin
         iter = 0
-        while t < tend            
+        while t < tend
             elapsed_step += @elapsed (t, dt) = sr.step!(fields, conf, tree, conn, t,
                                                         get(output, 1, convert(T, Inf)),
                                                         Val(:ssprk3))
@@ -215,7 +237,9 @@ function _main(;
             
             if (iter % refine_every) == 0                
                 elapsed_refine += @elapsed sr.refine!(fields, conf, tree, conn, t, dt;
-                                                      minlevel=8, maxlevel=10)
+                                                      minlevel=derefine_minlevel,
+                                                      maxlevel=refine_maxlevel)
+                # minlevel was 8
                 elapsed_connectivity += @elapsed conn = sr.connectivity(tree, stencil)
             end
 

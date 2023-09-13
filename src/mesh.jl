@@ -16,6 +16,16 @@ These are lowest level mesh-handling methods.  Some points to keep in mind:
 @inline unitcell(l, h=1.0) = h / (1 << (l - 1))
 
 """
+The highest level with a grid spacing larger than `x`, where `h` is the spacing at level 1.
+"""
+@inline levelbelow(x, h) = 1 + floor(Int, log2(h / x))
+
+"""
+The lowest level with a grid spacing smaller than `x`, where `h` is the spacing at level 1.
+"""
+@inline levelabove(x, h) = 1 + levelbelow(x, h)
+
+"""
 Bounding box of a block at level `l` with `m` cells per block.
 """
 @inline function bbox(b::CartesianIndex{D}, l, m, h=1.0) where {D}
