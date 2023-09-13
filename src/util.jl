@@ -50,15 +50,29 @@ end
 
 function maptree!(f::F, u::ScalarBlockField{D}, tree, h=1.0) where {D, F}
     @blocks order=flat for (l, coord, blk) in tree
-    # for layer in tree
-    #      l = layer.level
-    #     for (coord, blk) in layer.pairs
         centers = cell_centers(coord, l, sidelength(u), h)
         for I in localindices(u)
             r = ntuple(d -> centers[d][I[d]], Val(D))
             u[blk][Tuple(addghost(u, I))...] = f(r...)
         end
     end
+end
+
+"""
+Find the maximum value of a field and return a tuple `(location, value)`.
+"""
+function Base.findmax(u::ScalarBlockField{D}, tree, h=1.0) where D
+    function blkmax(l, c, blk)
+        centers = cell_centers(c, l, sidelength(u), h)
+        I = argmax(valid(u, blk))
+        return (u[I, blk], ntuple(d -> centers[d][I[d]], Val(D)))
+    end
+
+    function op((e1, r1), (e2, r2))
+        return e1 > e2 ? (e1, r1) : (e2, r2)
+    end
+    
+    mapreduce_tree(blkmax, op, tree, (typemin(eltype(u)), ntuple(d -> convert(eltype(u), NaN), Val(D))))
 end
 
 

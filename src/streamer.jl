@@ -62,6 +62,9 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
     flux_same_as_e::Bool
 
     maxdt::Vector{T}
+
+    "Available blocks"
+    freeblocks::Vector{Int}
     
     """
     Initialize a `StreamerFields` instance.
@@ -92,10 +95,12 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
         refdelta = ScalarBlockField{D, 1, 0, RefDelta}(Val(:contiguous))
 
         maxdt = Vector{T}(undef, 2^14)
+        freeblocks = Int[]
         
         return new{
             T, K, L, typeof(q), typeof(e), typeof(m), typeof(refdelta)
-        }(n, n1, dn, q, q1, u, u1, r, eabs, e, flux, photo, m, refdelta, flux_same_as_e, maxdt)
+        }(n, n1, dn, q, q1, u, u1, r, eabs, e, flux, photo, m, refdelta,
+          flux_same_as_e, maxdt, freeblocks)
     end
 end
 
@@ -185,7 +190,8 @@ struct StreamerConf{T, D,
                     TR <: AbstractTransportModel,
                     CH <: AbstractChemistry,
                     PH <: PhotoionizationModel,
-                    R  <: AbstractRefinement}
+                    R  <: AbstractRefinement,
+                    ST}
     "Spatial discretization at level 1"
     h::T
 
@@ -216,6 +222,9 @@ struct StreamerConf{T, D,
     "Refinement criterium"
     ref::R
 
+    "Stencil to compute connectivities"
+    stencil::ST
+    
     "Safety factor below dt limits"
     dt_safety_factor::T
 end
@@ -305,7 +314,7 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
     derivs!(dn[1], n, t, fld, conf, tree, conn)
 
     # Compute the dt
-    dt = min(tmax - t, dt_safety_factor * mapreduce((lvl, I, blk) -> maxdt[blk], min, tree, typemax(T)))
+    dt = min(tmax - t, dt_safety_factor * mapreduce_tree((lvl, I, blk) -> maxdt[blk], min, tree, typemax(T)))
     for s in 1:K
         n1[s] .= n[s] .+ dn[1][s] .* dt
     end
@@ -333,9 +342,9 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
 end
 
 
-function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, dt, freeblocks;
+function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, dt;
                  minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T, D}
-    (;m, refdelta, n) = fld
+    (;m, refdelta, n, freeblocks) = fld
     (;h, fbc) = conf
 
     ref = isnothing(ref) ? conf.ref : ref
@@ -353,3 +362,32 @@ function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, d
     applydelta!(tree, refdelta, freeblocks, fld, minlevel, maxlevel)
 end
 
+"""
+Sets the initial conditions and keeps refining according to criterium `ref` until no new blocks
+are created.  The initial conditions are specified as a vector of pairs 
+`species => func` where `species` is a species number and `func` is a function from `D` variables to
+a scalar, where `D` is the dimensionality.  Remaining `kwargs` are passed to refine!
+(e.g. minlevel, maxlevel).
+
+Returns the new connectivity.
+"""
+function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditions; kwargs...) where T
+    (;h, stencil) = conf
+    (;freeblocks, n) = fields
+
+    prevn = 0
+    local conn
+    
+    while prevn != nblocks(tree)
+        prevn = nblocks(tree)
+        conn = connectivity(tree, stencil)
+
+        for (species, func) in conditions
+            maptree!(func, n[species], tree, h)
+        end
+
+        refine!(fields, conf, tree, conn, T(0.0), T(Inf); ref, kwargs...)        
+    end
+
+    return conn
+end

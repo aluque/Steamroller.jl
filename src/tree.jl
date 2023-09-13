@@ -117,7 +117,14 @@ function isleaf(t, lvl, B)
 end
 
 
-function mapreduce(f, op, tree::Tree, init)
+"""
+Iterate over all blocks in a tree with a mapreduce operation. The map operation `f` receives
+arguments `(level, coordinates, blk)`.  The reduction receives whatever `f` returns and initially
+`init` (which defaults to `nothing`).
+
+NOTE: We do not add a method to Base.mapreduce because `Tree` is defined as a `Vector{BlockLayer}`. 
+"""
+function mapreduce_tree(f, op, tree::Tree, init=nothing)
     x = init
     for (lvl, I, blk) in TreeIterator(tree)
         x = op(x, f(lvl, I, blk))

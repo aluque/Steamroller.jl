@@ -62,17 +62,16 @@ end
 
 
 """
-A refinement criterium based on ion density.  We must refine if, when the ion density
+A refinement criterium based on density.  We must refine if, when the density
 is larger than nemax the grid size is larger than hmax. 
 """
-struct IonDensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
+struct DensityRef{T, SBF <: ScalarBlockField} <: AbstractRefinement
     nh::SBF
-    species::Int
     nhmax::T
     hmax::T
 end
 
-compatible(ref::IonDensityRef, (lvl, coord, blk), I, h, t) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk][ref.species] < ref.nhmax)
+compatible(ref::DensityRef, (lvl, coord, blk), I, h, t) = (h < ref.hmax) || (ref.nh[addghost(ref.nh, I), blk] < ref.nhmax)
 
 
 """
