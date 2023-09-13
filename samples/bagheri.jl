@@ -199,12 +199,13 @@ function _main(;
                 if plot
                     #plt.figure(1)
                     plt.clf()
-                    #srplt.scalartreeplot(fields.q, tree, h, boundaries=true, maxlevel=8)
-                    #srplt.scalartreeplot(fields.nh, tree, h, boundaries=true, log=true, index=1)
                     srplt.scalartreeplot(fields.eabs, tree, h, boundaries=true)
                     # plt.xlim([0, 2e-3])
                     # plt.ylim([0.000, 0.011])
                     plt.colorbar()
+
+                    # This gc here seems to prevent a nasty segfault bug in PyCall/PyPlot
+                    GC.gc()
                 end
                 popfirst!(output)
             end
