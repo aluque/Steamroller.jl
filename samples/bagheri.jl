@@ -37,9 +37,10 @@ function main(;kw...)
 end
 
 case1(;kw...) = main(;kw...)
-case2(;kw...) = main(nbg=1e9, output=0:1e-9:24.01e-9, tend=24.01e-9, refine_persistence=5e-12; kw...)
+case2(;kw...) = main(nbg=1e9, output=0:1e-9:24.01e-9, tend=24.01e-9, refine_persistence=5e-12,
+                     v=0.03e7; kw...)
 case3(;kw...) = main(nbg=1e9, output=0:1e-9:15.01e-9, tend=15.01e-9, refine_persistence=5e-12,
-                     phmodel=bourdon3(); kw...)
+                     phmodel=bourdon3(), v=0.06e7; kw...)
 
 function _main(;
                # The data type for floating point operations.  In general changing this to
@@ -112,6 +113,9 @@ function _main(;
                # Output times
                output=0:1e-9:16e-9,
 
+               # Approximate velocity of the streamer (only for comparison with Bagheri 2018 data)
+               v=0.05e7,
+               
                # Storage mode:
                #  :contiguous is reasonably fast
                #  :vector can be faster for 3d computations but compilation may also be very long
@@ -251,6 +255,7 @@ function _main(;
                                                  :dt => dt,
                                                  :iter => iter,
                                                  :max_level => findlast(!isempty, tree),
+                                                 :min_h => h / 2^(findlast(!isempty, tree) - 1),
                                                  :nblocks => sr.nblocks(tree),
                                                  :elapsed_step => elapsed_step,
                                                  :elapsed_refine => elapsed_refine,
@@ -263,11 +268,11 @@ function _main(;
         end
     end
     @info "\n```\n$msg\n```"
-
+    
     empty!(Logging.current_logger().sticky_messages)
     df = DataFrame(t=at, z=az, emax=aemax)
     CSV.write("streamer2d.csv", df)
-    
+    @info "Location of the streamer tip" resultdf(df; v)
     return NamedTuple(Base.@locals)
 end
 
@@ -305,6 +310,10 @@ Construct an empty photo-ionization model.
 function empty_photoionization(T)    
     return sr.PhotoionizationModel{0, T, Nothing}(SVector{0, sr.PhotoionizationTerm{T}}(), 0, (0, 0), nothing, 0)    
 end
+
+L(z) = 1.25e-2 - z
+DL(z::Real, t::Real; v = 0.05 * co.centi / co.nano) = L(z) - v * t
+resultdf(x; v = 0.05 * co.centi / co.nano) = DataFrame(t=x.t, DL=DL.(x.z, x.t; v), L=L.(x.z), emax=x.emax)
 
 
 function gaussian(a, z, r, z0, w)
