@@ -397,7 +397,7 @@ Execute the full streamer simulation.
 """
 function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, output=[],
               refine_every=2, progress_every=50, output_callbacks=[]) where {T}
-    (;stencil) = conf
+    (;stencil, h) = conf
     output = map(x->convert(T, x), output)
 
     # Measure times
@@ -410,7 +410,19 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, o
     local msg
     iter = 0
     start = time()
-    
+
+    _msg() = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
+                      Pair{Symbol, Any}[:t => t,
+                                        :dt => dt,
+                                        :iter => iter,
+                                        :max_level => findlast(!isempty, tree),
+                                        :min_h => h / 2^(findlast(!isempty, tree) - 1),
+                                        :nblocks => nblocks(tree),
+                                        :running_time => time() - start,
+                                        :elapsed_step => elapsed_step,
+                                        :elapsed_refine => elapsed_refine,
+                                        :elapsed_connectivity => elapsed_connectivity]), "\n")
+
     @withprogress begin
         while t < tend            
             elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t,
@@ -436,16 +448,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, o
 
             if (iter % progress_every) == 0
                 @logprogress (t / tend)
-                msg = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
-                               Pair{Symbol, Any}[:t => t,
-                                                 :dt => dt,
-                                                 :iter => iter,
-                                                 :max_level => findlast(!isempty, tree),
-                                                 :nblocks => nblocks(tree),
-                                                 :running_time => time() - start,
-                                                 :elapsed_step => elapsed_step,
-                                                 :elapsed_refine => elapsed_refine,
-                                                 :elapsed_connectivity => elapsed_connectivity]), "\n")
+                msg = _msg()
                 #percent = format("{:.1f}", 100 * t / tend)
                 @info "\n```\n$msg\n```" sticky=true _id=:report
             end
@@ -455,6 +458,8 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, o
     end
 
     empty!(Logging.current_logger().sticky_messages)
+
+    msg = _msg()
     @info "Simulation completed\n```\n$msg\n```"
 
     return (;t, dt, iter, elapsed_step, elapsed_refine, elapsed_connectivity)
