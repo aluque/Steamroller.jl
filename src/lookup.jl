@@ -17,8 +17,12 @@ struct LookupTable{TX, TY, F, G, GI}
     ginv::GI
 
     function LookupTable(fx, gy; f=identity, g=identity, ginv=identity)
-        @assert length(fx) == length(gy)
-
+        if gy isa Vector{<:Real}
+            @assert length(fx) == length(gy)
+        else
+            @assert all(==(length(fx)), length.(gy))
+        end
+        
         new{typeof(fx), typeof(gy), typeof(f), typeof(g), typeof(ginv)}(fx, gy, f, g, ginv)
     end        
 end
@@ -52,6 +56,14 @@ _prefetch(tbl, x, p) = p
     return tbl.ginv(gy)
 end
 
+@inline function (tbl::LookupTable)(x, col::Integer, prefetch=nothing)
+    (i, w) = _prefetch(tbl, x, prefetch)
+
+    @inbounds gy = w * tbl.gy[col][i + 1] + (1 - w) * tbl.gy[col][i]
+
+    return tbl.ginv(gy)
+end
+
 
 """    
     Guess a range from a vector `v`.  Raises a warning if the values are too far 
@@ -77,7 +89,7 @@ end
 """
     Load a lookuptable from a delimited file.
 """
-function loadtable(fname, T::Type=Float64; resample_into=nothing,
+function loadtable(fname::AbstractString, T::Type=Float64; resample_into=nothing,
                    xcol=1, ycol=2, f=identity, g=identity, ginv=identity, kw...)
     data = readdlm(fname, T)
     
@@ -87,6 +99,29 @@ function loadtable(fname, T::Type=Float64; resample_into=nothing,
     if !isnothing(resample_into)
         fx1 = LinRange(fx[begin], fx[end], resample_into)
         gy1 = linear_interpolation(fx, gy).(fx1)
+
+        (fx, gy) = (fx1, gy1)
+    end
+    
+    LookupTable(fx, gy; f, g, ginv)
+end
+
+
+"""
+    Load a multi-column lookuptable from a series of columns.
+    If you have a table as a DataFrame pass `tbl=eachcol(df)` in order to support regular indexing
+    by-columns.
+"""
+function loadtable(tbl, T::Type=Float64; resample_into=nothing,
+                   xcol=1, ycols=nothing, f=identity, g=identity, ginv=identity, kw...)
+    fx = approxrange(f.(tbl[xcol]); kw...)
+    ycols = isnothing(ycols) ? keys(tbl) : ycols
+    
+    gy = [g.(tbl[ycol]) for ycol in ycols]
+    
+    if !isnothing(resample_into)
+        fx1 = LinRange(fx[begin], fx[end], resample_into)
+        gy1 = [linear_interpolation(fx, igy).(fx1) for igy in gy]
 
         (fx, gy) = (fx1, gy1)
     end
