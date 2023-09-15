@@ -41,6 +41,9 @@ case2(;kw...) = main(nbg=1e9, output=0:1e-9:24.01e-9, tend=24.01e-9, refine_pers
                      v=0.03e7; kw...)
 case3(;kw...) = main(nbg=1e9, output=0:1e-9:15.01e-9, tend=15.01e-9, refine_persistence=5e-12,
                      phmodel=bourdon3(), v=0.06e7; kw...)
+case1_3d(;kw...) = main(;D=3, rootsize=(2, 2, 1),
+                        eb = @SVector([0.0, 0.0, -18.75e3 / 1.25e-2]),
+)
 
 function _main(;
                # The data type for floating point operations.  In general changing this to
@@ -60,6 +63,9 @@ function _main(;
                # Root-level block dimensions
                rootsize = (1, 1),
                
+               # Size of each block
+               L = T(1.25e-2),
+               
                # Absolute maximum level.  This is a hard limit; not very relevant.
                maxlevel = 16,
                
@@ -72,11 +78,19 @@ function _main(;
                z0  = T(0.01),       # Location of the gaussian peak
                nbg = T(1e13),       # Background density
 
+               initial_conditions = (D == 2 ?
+                                     [1 => (r, z) -> nbg,                              # electrons
+                                      2 => (r, z) -> nbg + gaussian(N0, z, r, z0, σ)] :# ions
+                                     [1 => (x, y, z) -> nbg,
+                                      2 => (x, y, z) -> nbg + gaussian(N0, x, y, z, L, L, z0, σ)]),
+    
+
                # Background field
                eb = @SVector([zero(T), T(-18.75e3 / 1.25e-2)]),
 
                # Photoionization model
                phmodel = empty_photoionization(T),
+               
                
                # How many iterations between each recomputing the mesh?
                refine_every=2,
@@ -129,7 +143,7 @@ function _main(;
     Polyester.reset_threads!()
     
     # This makes block size of 1 cm.
-    h = T(1.25e-2) / M
+    h = L / M
     derefine_minlevel = sr.levelabove(derefine_max_h, h)
     refine_maxlevel = sr.levelbelow(refine_min_h, h)
         
@@ -137,30 +151,32 @@ function _main(;
     tree = sr.Tree(D, CartesianIndices(ntuple(i -> rootsize[i], Val(D))), maxlevel)
 
     # Boundary conditions for the Poisson equation
-    pbc = sr.boundaryconditions(((1, -1), (-1, -1)))
+    pbc = (D == 2 ?
+        sr.boundaryconditions(((1, -1), (-1, -1))) :
+        sr.boundaryconditions(((-1, -1), (-1, -1), (-1, -1))))
+        
 
     # Boundary conditions for the fluids
-    fbc = sr.boundaryconditions(((1, 1), (1, 1)))
+    fbc = (D == 2 ?
+        sr.boundaryconditions(((1, 1), (1, 1))) :
+        sr.boundaryconditions(((1, 1), (1, 1), (1, 1))))
 
     # Geometry of the problem and discretization for the Poisson equation.
-    geom = sr.CylindricalGeometry{1}()
-    lpl = sr.LaplacianDiscretization{2, poisson_order}()
+    geom = (D == 2 ? sr.CylindricalGeometry{1}() : sr.CartesianGeometry())    
+    lpl = sr.LaplacianDiscretization{D, poisson_order}()
 
-    stencil = poisson_order == 2 ? sr.StarStencil{2}() :
-        poisson_order == 4 ? sr.BoxStencil{2}() : @error "poisson_order = $poisson_order not allowed"
+    stencil = poisson_order == 2 ? sr.StarStencil{D}() :
+        poisson_order == 4 ? sr.BoxStencil{D}() : @error "poisson_order = $poisson_order not allowed"
 
     
     trans = sr.BagheriTransportModel()
-    # To use lookup tables:
-    # trans = sr.CWITransportModel{T}(
-    #     joinpath.(@__DIR__, "data", ["cwi_alpha.txt", "cwi_mu.txt", "cwi_dif.txt"])...)
-    
+
     # Chemical model
     chem = sr.NetIonization(trans)
-
+    
     # The Teunissen refinement criterium based on the electric field
     tref = sr.TeunissenRef(fields.eabs, trans, refine_teunissen_c0, refine_teunissen_c1)
-
+    
     # A refinement creiterium based on the density of some species (here ions)    
     nref = sr.DensityRef(fields.n[2], refine_density_value, refine_density_h)
 
@@ -177,102 +193,41 @@ function _main(;
     sr.populate!(tree, 3)
     sr.newblocks!(fields, sr.nblocks(tree))
 
-    conditions = [1 => (r, z) -> nbg,                            # electrons
-                  2 => (r, z) -> nbg + gaussian(N0, z, r, z0, σ) # ions
-                  ]
-    conn = sr.initial_conditions!(fields, conf, tree, nref, conditions, minlevel=3, maxlevel=refine_maxlevel)
+    conn = sr.initial_conditions!(fields, conf, tree, nref, initial_conditions,
+                                  minlevel=3, maxlevel=refine_maxlevel)
     
     @info "Number of blocks after initial conditions!" nblocks=sr.nblocks(tree)
     
-    # Measure times
-    elapsed_step = 0.0
-    elapsed_refine = 0.0
-    elapsed_connectivity = 0.0
-    
-    t = zero(T)
-    dt = zero(T)
-
-    output = map(x->convert(T, x), output)
-
     # We store the location and value of the max. field for all output times.
     az = T[]
     at = T[]
     aemax = T[]
 
-    logger = Logging.current_logger()
-    local msg
-    min_dt = 1e-16
-    
-    @withprogress begin
-        iter = 0
-        while t < tend
-            elapsed_step += @elapsed (t, dt) = sr.step!(fields, conf, tree, conn, t,
-                                                        get(output, 1, convert(T, Inf)),
-                                                        Val(:ssprk3))
+    function _report(t)
+        (emax, r) = findmax(fields.eabs, tree, h)
+        
+        zemax = r[end]
+        @info "Snapshot" t zemax emax min_h=(h / 2^(findlast(!isempty, tree) - 1))
+        
+        push!(az, r[end])
+        push!(at, t)
+        push!(aemax, emax)
+    end
+
+    function _plot(t)
+        if plot
+            plt.clf()
+            srplt.scalartreeplot(fields.eabs, tree, h, boundaries=true)
+            plt.colorbar()
             
-            if !isempty(output) && isapprox(t, first(output))
-                (emax, r) = findmax(fields.eabs, tree, h)
-                
-                zemax = r[end]
-                @info "Snapshot time reached" t zemax emax
-
-                push!(az, r[end])
-                push!(at, t)
-                push!(aemax, emax)
-                
-                if plot
-                    #plt.figure(1)
-                    plt.clf()
-                    srplt.scalartreeplot(fields.eabs, tree, h, boundaries=true)
-                    # plt.xlim([0, 2e-3])
-                    # plt.ylim([0.000, 0.011])
-                    plt.colorbar()
-
-                    # This gc here seems to prevent a nasty segfault bug in PyCall/PyPlot
-                    GC.gc()
-                end
-                popfirst!(output)
-            end
-
-            if t > 0 && dt < min_dt
-                @warn "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
-                break
-            end
-            
-            if (iter % refine_every) == 0                
-                elapsed_refine += @elapsed sr.refine!(fields, conf, tree, conn, t, dt;
-                                                      minlevel=derefine_minlevel,
-                                                      maxlevel=refine_maxlevel)
-                # minlevel was 8
-                elapsed_connectivity += @elapsed conn = sr.connectivity(tree, stencil)
-            end
-
-            local frac = (t / tend)^2 
-            if (iter % 50) == 0
-                @logprogress frac
-                msg = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
-                               Pair{Symbol, Any}[:t => t,
-                                                 :dt => dt,
-                                                 :iter => iter,
-                                                 :max_level => findlast(!isempty, tree),
-                                                 :min_h => h / 2^(findlast(!isempty, tree) - 1),
-                                                 :nblocks => sr.nblocks(tree),
-                                                 :elapsed_step => elapsed_step,
-                                                 :elapsed_refine => elapsed_refine,
-                                                 :elapsed_connectivity => elapsed_connectivity]), "\n")
-                io = IOBuffer()
-                printstyled(IOContext(io, :color=>true), msg, color=:blue)
-                push!(Logging.current_logger().sticky_messages, :vars=>String(take!(io)))
-            end
-            iter += 1
+            # This gc here seems to prevent a nasty segfault bug in PyCall/PyPlot
+            GC.gc()
         end
     end
-    @info "\n```\n$msg\n```"
-    
-    empty!(Logging.current_logger().sticky_messages)
-    df = DataFrame(t=at, z=az, emax=aemax)
-    CSV.write("streamer2d.csv", df)
-    @info "Location of the streamer tip" resultdf(df; v)
+        
+    sr.run!(fields, conf, tree, conn, tend; output,
+            output_callbacks=(_report, _plot))
+
     return NamedTuple(Base.@locals)
 end
 
@@ -320,7 +275,11 @@ function gaussian(a, z, r, z0, w)
     return a * exp(-(r^2 + (z - z0)^2) / w^2)
 end
 
+function gaussian(a, x, y, z, x0, y0, z0, w)
+    return a * exp(-((x - x0)^2 + (y - y0)^2 + (z - z0)^2) / w^2)
 end
+
+                        end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     Streamer2d.main()

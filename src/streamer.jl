@@ -376,82 +376,93 @@ function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditi
     (;freeblocks, n) = fields
 
     prevn = 0
-    local conn
-    
+    conn = connectivity(tree, stencil)
     while prevn != nblocks(tree)
         prevn = nblocks(tree)
-        conn = connectivity(tree, stencil)
 
         for (species, func) in conditions
             maptree!(func, n[species], tree, h)
         end
 
         refine!(fields, conf, tree, conn, T(0.0), T(Inf); ref, kwargs...)        
+        connectivity!(conn, tree, stencil)
     end
 
     return conn
 end
 
 
-# """
-# Execute the full streamer simulation.
-# """
-# function run!(fields::StreamerFields{T}, conf, tree, conn, tend, min_dt; min_dt=1e-16, output=[],
-#               refine_every=2, progress_every=50, output_callbacks=[])
-#     output = map(x->convert(T, x), output)
+"""
+Execute the full streamer simulation.
+"""
+function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, output=[],
+              refine_every=2, progress_every=50, output_callbacks=[]) where {T}
+    (;stencil) = conf
+    output = map(x->convert(T, x), output)
 
-#     # Measure times
-#     elapsed_step = 0.0
-#     elapsed_refine = 0.0
-#     elapsed_connectivity = 0.0
+    # Measure times
+    elapsed_step = 0.0
+    elapsed_refine = 0.0
+    elapsed_connectivity = 0.0
     
-#     t = zero(T)
-#     dt = zero(T)
+    t = zero(T)
+    dt = zero(T)
+    local msg
+    iter = 0
+    start = time()
+    
+    @withprogress begin
+        while t < tend            
+            elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t,
+                                                     get(output, 1, convert(T, Inf)),
+                                                     Val(:ssprk3))
 
-#     @withprogress begin
-#         iter = 0
-#         while t < tend            
-#             elapsed_step += @elapsed (t, dt) = sr.step!(fields, conf, tree, conn, t,
-#                                                         get(output, 1, convert(T, Inf)),
-#                                                         Val(:ssprk3))
+            if t > 0 && dt < min_dt
+                @warn "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
+                break
+            end
 
-#             if t > 0 && dt < min_dt
-#                 @warn "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
-#                 break
-#             end
+            if !isempty(output) && isapprox(t, first(output))
+                _run_callbacks(output_callbacks, t)
+                popfirst!(output)
+            end
 
-#             if !isempty(output) && isapprox(t, first(output))
-#                 for f in output_callbacks
-#                     f()
-#                 end
-#             end
-
-#             if (iter % refine_every) == 0                
-#                 elapsed_refine += @elapsed sr.refine!(fields, conf, tree, conn, t, dt;
-#                                                       minlevel=8, maxlevel=10)
-#                 elapsed_connectivity += @elapsed conn = sr.connectivity(tree, stencil)
-#             end
+            if (iter % refine_every) == 0
+                elapsed_refine += @elapsed refine!(fields, conf, tree, conn, t, dt;
+                                                   minlevel=8, maxlevel=10)
+                elapsed_connectivity += @elapsed connectivity!(conn, tree, stencil)
+            end
 
 
-#             if (iter % progress_every) == 0
-#                 @logprogress frac
-#                 msg = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
-#                                Pair{Symbol, Any}[:t => t,
-#                                                  :dt => dt,
-#                                                  :iter => iter,
-#                                                  :max_level => findlast(!isempty, tree),
-#                                                  :nblocks => nblocks(tree),
-#                                                  :elapsed_step => elapsed_step,
-#                                                  :elapsed_refine => elapsed_refine,
-#                                                  :elapsed_connectivity => elapsed_connectivity]), "\n")
-#                 io = IOBuffer()
-#                 printstyled(IOContext(io, :color=>true), msg, color=:blue)
-#                 push!(Logging.current_logger().sticky_messages, :vars=>String(take!(io)))
-#             end
+            if (iter % progress_every) == 0
+                @logprogress (t / tend)
+                msg = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
+                               Pair{Symbol, Any}[:t => t,
+                                                 :dt => dt,
+                                                 :iter => iter,
+                                                 :max_level => findlast(!isempty, tree),
+                                                 :nblocks => nblocks(tree),
+                                                 :running_time => time() - start,
+                                                 :elapsed_step => elapsed_step,
+                                                 :elapsed_refine => elapsed_refine,
+                                                 :elapsed_connectivity => elapsed_connectivity]), "\n")
+                #percent = format("{:.1f}", 100 * t / tend)
+                @info "\n```\n$msg\n```" sticky=true _id=:report
+            end
             
-#             iter += 1
-#         end
-#     end
+            iter += 1
+        end
+    end
 
-#     return (;t, dt, iter, elapsed_step, elapsed_refine, elapsed_connectivity)
-# end
+    empty!(Logging.current_logger().sticky_messages)
+    @info "Simulation completed\n```\n$msg\n```"
+
+    return (;t, dt, iter, elapsed_step, elapsed_refine, elapsed_connectivity)
+end
+
+_run_callbacks(f::Tuple{}, args...) = nothing
+function _run_callbacks(f::Tuple, args...)
+    first(f)(args...)
+    _run_callbacks(Base.tail(f), args...)
+end
+
