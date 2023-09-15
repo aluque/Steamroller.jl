@@ -73,3 +73,31 @@ function derivs(chem::NetIonization, n, eabs, prephoto::Val{false})
 end
 
 @inline species_charge(::NetIonization) = @SVector([-1, 1])
+
+
+"""
+A limited 2-species chemistry model derived from a lookup table.
+    """
+@kwdef struct NetIonizationLookup{L <: LookupTable} <: AbstractChemistry
+    lookup::L
+    ionization_index::Int
+    attachment_index::Int
+end
+
+@inline species_charge(::NetIonizationLookup) = @SVector([-1, 1])
+
+# Before computing photo-ionization: we only include ionization
+function derivs(chem::NetIonizationLookup, n, eabs, prephoto::Val{true})
+    # n[1] is the electron density
+    dne = n[1] * chem.lookup(eabs, chem.ionization_index)
+    return @SVector [dne, dne]
+end
+
+# After computing photo-ionization: everything else, including attachment
+function derivs(chem::NetIonizationLookup, n, eabs, prephoto::Val{false})
+    # n[1] is the electron density
+    dne = n[1] * chem.lookup(eabs, chem.attachment_index)
+    return @SVector [dne, dne]
+end
+
+

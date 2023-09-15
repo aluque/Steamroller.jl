@@ -88,6 +88,8 @@ end
 Construct the bourdon 2/3-term model as described by Bagheri 2018.
 """
 function bourdon(T, A, λ;
+                 # Index of the source (the species that contains ionization used as a source).
+                 source=2,
                  # ξB νu/νi
                  ξ´ = 0.075,
                  pO2 = 150 * co.torr,

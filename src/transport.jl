@@ -122,3 +122,25 @@ end
 @inline attachment(m::CWITransportModel, eabs, p=nothing) = m.eta
 @inline townsend(m::CWITransportModel, eabs, p=nothing) = m.alpha(eabs) + m.eta
 @inline netionization(m::CWITransportModel, eabs, p=nothing) = nettownsend(m, eabs) * eabs * m.mu(eabs)
+
+
+########################################
+# Transport model based on swarm data
+########################################
+@kwdef struct TransportLookup{L <: LookupTable} <: AbstractTransportModel
+    lookup::L
+    mobility_index::Int
+    diffusion_index::Int
+    townsend_index::Int
+    townsend_attachment_index::Int
+end
+
+
+@inline mobility(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.mobility_index)
+@inline diffusion(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.diffusion_index)
+@inline nettownsend(m::TransportLookup, eabs, p=nothing) = townsend(m, eabs, p) - attachment(m, eabs, p)
+@inline attachment(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.attachment_index)
+@inline townsend(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.townsend_index)
+@inline netionization(m::TransportLookup, eabs, p=nothing) = nettownsend(m, eabs) * eabs * mobility(m, eabs)
+
+
