@@ -40,7 +40,7 @@ case1(;kw...) = main(;kw...)
 case2(;kw...) = main(nbg=1e9, output=0:1e-9:24.01e-9, tend=24.01e-9, refine_persistence=5e-12,
                      v=0.03e7; kw...)
 case3(;kw...) = main(nbg=1e9, output=0:1e-9:15.01e-9, tend=15.01e-9, refine_persistence=5e-12,
-                     phmodel=bourdon3(), v=0.06e7; kw...)
+                     phmodel=sr.bourdon3(), v=0.06e7; kw...)
 case1_3d(;kw...) = main(;D=3, rootsize=(2, 2, 1),
                         eb = @SVector([0.0, 0.0, -18.75e3 / 1.25e-2]),
 )
@@ -89,7 +89,7 @@ function _main(;
                eb = @SVector([zero(T), T(-18.75e3 / 1.25e-2)]),
 
                # Photoionization model
-               phmodel = empty_photoionization(T),
+               phmodel = sr.empty_photoionization(T),
                
                
                # How many iterations between each recomputing the mesh?
@@ -231,40 +231,6 @@ function _main(;
     return NamedTuple(Base.@locals)
 end
 
-
-"""
-Construct the bourdon 2/3-term model as described by Bagheri 2018.
-"""
-function bourdon(T, A, λ)
-    # ξB νu/νi
-    ξ´ = 0.075
-    pO2 = 150 * co.torr
-    p = 750 * co.torr
-    pq = 40 * co.milli * co.bar
-
-
-    # See A.9 for the multiplicative factors.  Note also the unit conversion.
-    a = @. A * pO2^2 * (pq / (p + pq)) * ξ´ * co.centi^-2 * co.torr^-2
-    k = @. pO2 * λ * co.centi^-1 * co.torr^-1
-
-    term = sr.PhotoionizationTerm{T}.(a, k .^ 2)
-    bc = sr.boundaryconditions(((1, 1), (-1, -1)))
-    phmodel = sr.PhotoionizationModel{length(A), T, typeof(bc)}(term, 1, (1, 2), bc, 2)
-
-    return phmodel
-end
-
-# Direct copy of table A3
-bourdon3(T=Float64) = bourdon(T,
-                              [1.986e-4, 0.0051, 0.4886],  # A
-                              [0.0553, 0.1460, 0.8900])   # λ
-
-"""
-Construct an empty photo-ionization model.
-"""
-function empty_photoionization(T)    
-    return sr.PhotoionizationModel{0, T, Nothing}(SVector{0, sr.PhotoionizationTerm{T}}(), 0, (0, 0), nothing, 0)    
-end
 
 L(z) = 1.25e-2 - z
 DL(z::Real, t::Real; v = 0.05 * co.centi / co.nano) = L(z) - v * t

@@ -70,3 +70,47 @@ end
         end
     end        
 end
+
+
+###
+#  Predefined photo-ionization models
+##
+"""
+Construct an empty photo-ionization model.  Because the number of terms (0) is known statically,
+this should have a zero overhead.
+"""
+function empty_photoionization(T)    
+    return PhotoionizationModel{0, T, Nothing}(SVector{0, PhotoionizationTerm{T}}(), 0, (0, 0), nothing, 0)    
+end
+
+
+"""
+Construct the bourdon 2/3-term model as described by Bagheri 2018.
+"""
+function bourdon(T, A, λ;
+                 # ξB νu/νi
+                 ξ´ = 0.075,
+                 pO2 = 150 * co.torr,
+                 p = 750 * co.torr,
+                 pq = 40 * co.milli * co.bar)
+
+    # See A.9 for the multiplicative factors.  Note also the unit conversion.
+    a = @. A * pO2^2 * (pq / (p + pq)) * ξ´ * co.centi^-2 * co.torr^-2
+    k = @. pO2 * λ * co.centi^-1 * co.torr^-1
+
+    term = PhotoionizationTerm{T}.(a, k .^ 2)
+    bc = boundaryconditions(((1, 1), (-1, -1)))
+    phmodel = PhotoionizationModel{length(A), T, typeof(bc)}(term, 1, (1, 2), bc, 2)
+
+    return phmodel
+end
+
+# Direct copy of table A2 in Bagheri 2018
+bourdon2(T=Float64) = bourdon(T,
+                              [0.0974, 0.5877],    # A
+                              [0.0021, 0.1775])    # λ
+
+# Direct copy of table A3 in Bagheri 2018
+bourdon3(T=Float64) = bourdon(T,
+                              [1.986e-4, 0.0051, 0.4886],  # A
+                              [0.0553, 0.1460, 0.8900])    # λ
