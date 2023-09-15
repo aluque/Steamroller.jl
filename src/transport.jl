@@ -37,24 +37,29 @@ Base.@kwdef struct BagheriTransportModel{T} <: AbstractTransportModel
     # η::T = 340.98719
 end
 
+"""
+When making multiple queries to the transport data, we may want to pre-fetch some data for performance
+reasons.  Some models simply ignore this.
+"""
+@inline prefetch(::BagheriTransportModel, eabs) = nothing
 
 """
 Velocity in transport model `m` for an electric field `eabs`.
 """
-@inline mobility(m::BagheriTransportModel, eabs) = @fastmath m.μ0 * eabs^m.eμ
+@inline mobility(m::BagheriTransportModel, eabs, p=nothing) = @fastmath m.μ0 * eabs^m.eμ
 #@inline mobility(m::BagheriTransportModel, eabs) = 0.0372193
 
 
 """
 Diffusion rate in transport model `m` for an electric field `eabs`.
 """
-@inline diffusion(m::BagheriTransportModel, eabs) = @fastmath m.D0 * eabs^m.eD
+@inline diffusion(m::BagheriTransportModel, eabs, p=nothing) = @fastmath m.D0 * eabs^m.eD
 
 
 """
 Townsend coefficient (excluding attachment) in transport model `m` for an electric field `eabs`.
 """
-@inline function townsend(m::BagheriTransportModel, eabs)
+@inline function townsend(m::BagheriTransportModel, eabs, p=nothing)
     (;α0, α1, eα, mα, η) = m
 
     @fastmath (α0 + α1 / eabs^eα) * exp(mα / eabs)
@@ -63,12 +68,12 @@ end
 """
 Townsend attachment coefficient in transport model `m` for an electric field `eabs`.
 """
-@inline attachment(m::BagheriTransportModel, eabs) = m.η
+@inline attachment(m::BagheriTransportModel, eabs, p=nothing) = m.η
 
 """
 Townsend coefficient in transport model `m` for an electric field `eabs`.
 """
-@inline function nettownsend(m::BagheriTransportModel, eabs)
+@inline function nettownsend(m::BagheriTransportModel, eabs, p=nothing)
     @fastmath townsend(m, eabs) - attachment(m, eabs)
 end
 
@@ -76,7 +81,7 @@ end
 """
 Net ionization in transport model `m` for an electric field `eabs`.
 """
-@inline function netionization(m::BagheriTransportModel, eabs)
+@inline function netionization(m::BagheriTransportModel, eabs, p=nothing)
     (;α0, α1, eα, mα, η) = m
 
     α = nettownsend(m, eabs)
@@ -111,9 +116,9 @@ struct CWITransportModel{T, T1, T2, T3} <: AbstractTransportModel
     end
 end
 
-@inline mobility(m::CWITransportModel, eabs) = m.mu(eabs)
-@inline diffusion(m::CWITransportModel, eabs) = m.dif(eabs)
-@inline nettownsend(m::CWITransportModel, eabs) = m.alpha(eabs)
-@inline attachment(m::CWITransportModel, eabs) = m.eta
-@inline townsend(m::CWITransportModel, eabs) = m.alpha(eabs) + m.eta
-@inline netionization(m::CWITransportModel, eabs) = nettownsend(m, eabs) * eabs * m.mu(eabs)
+@inline mobility(m::CWITransportModel, eabs, p=nothing) = m.mu(eabs)
+@inline diffusion(m::CWITransportModel, eabs, p=nothing) = m.dif(eabs)
+@inline nettownsend(m::CWITransportModel, eabs, p=nothing) = m.alpha(eabs)
+@inline attachment(m::CWITransportModel, eabs, p=nothing) = m.eta
+@inline townsend(m::CWITransportModel, eabs, p=nothing) = m.alpha(eabs) + m.eta
+@inline netionization(m::CWITransportModel, eabs, p=nothing) = nettownsend(m, eabs) * eabs * m.mu(eabs)
