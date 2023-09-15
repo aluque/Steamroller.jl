@@ -248,6 +248,6 @@ end
                         end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    Streamer2d.main()
+    Bagheri.main()
 end
 
