@@ -53,6 +53,7 @@ include("fluid.jl")
 include("photo.jl")
 include("chemistry.jl")
 include("streamer.jl")
+include("initcond.jl")
 include("util.jl")
 
 end # module
