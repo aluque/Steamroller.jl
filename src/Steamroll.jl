@@ -12,6 +12,9 @@ using Polyester
 using MacroTools
 using RecursiveArrayTools
 using Logging
+using TerminalLoggers
+using ProgressLogging
+using Printf
 using Dates
 using Format
 using Base: @propagate_inbounds
