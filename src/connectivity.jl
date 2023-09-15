@@ -75,6 +75,14 @@ __connections(c::Connectivity, ::Type{RefBoundary{D}}, level) where {D} = c.refb
 __connections(c::Connectivity, ::Type{Child{D}}, level) where {D} = c.child[level]
 
 Base.push!(c::Connectivity, level, item::T) where {T} = push!(__connections(c, T, level), item)
+function Base.empty!(c::Connectivity)
+    for l in eachindex(c.boundary)
+        empty!(c.boundary[l])
+        empty!(c.neighbor[l])
+        empty!(c.refboundary[l])
+        empty!(c.child[l])
+    end
+end
 
 
 """ 
@@ -86,7 +94,16 @@ by a `handler` object that should have defined methods `boundary`,
 function connectivity(tree::Tree{D}, stencil) where {D}
     levels = length(tree)
     conn = Connectivity{D}(levels)
-    
+    connectivity!(conn, tree, stencil)
+    return conn
+end
+
+
+"""
+Same as `connectivity`, but updates a previously created instance passed as `conn`.
+"""
+function connectivity!(conn, tree::Tree{D}, stencil) where {D}
+    empty!(conn)
     for layer in tree
         for (c, blk) in layer
             for s in stencil
