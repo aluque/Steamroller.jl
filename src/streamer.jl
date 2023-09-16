@@ -396,6 +396,7 @@ end
 Execute the full streamer simulation.
 """
 function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, output=[],
+              derefine_minlevel=3, refine_maxlevel=10,
               refine_every=2, progress_every=50, output_callbacks=[]) where {T}
     (;stencil, h) = conf
     output = map(x->convert(T, x), output)
@@ -441,7 +442,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, o
 
             if (iter % refine_every) == 0
                 elapsed_refine += @elapsed refine!(fields, conf, tree, conn, t, dt;
-                                                   minlevel=8, maxlevel=10)
+                                                   minlevel=derefine_minlevel, maxlevel=refine_maxlevel)
                 elapsed_connectivity += @elapsed connectivity!(conn, tree, stencil)
             end
 
