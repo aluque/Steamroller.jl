@@ -34,7 +34,7 @@ A (Super-)Gaussian initial condition.
     z0::T = zero(A)
 
     "Exponent of the super-gaussian"
-    s::Int = 2
+    s::Int = 1
     
     "if nonzero, extend the gaussian in the z axis in the given direction"
     extend::Int = 0
