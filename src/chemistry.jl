@@ -96,7 +96,7 @@ end
 # After computing photo-ionization: everything else, including attachment
 function derivs(chem::NetIonizationLookup, n, eabs, prephoto::Val{false})
     # n[1] is the electron density
-    dne = n[1] * chem.lookup(eabs, chem.attachment_index)
+    dne = -n[1] * chem.lookup(eabs, chem.attachment_index)
     return @SVector [dne, dne]
 end
 
