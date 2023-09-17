@@ -124,9 +124,13 @@ arguments `(level, coordinates, blk)`.  The reduction receives whatever `f` retu
 
 NOTE: We do not add a method to Base.mapreduce because `Tree` is defined as a `Vector{BlockLayer}`. 
 """
-function mapreduce_tree(f, op, tree::Tree, init=nothing)
+function mapreduce_tree(f, op, tree::Tree, init=nothing, leafsonly=true)
     x = init
     for (lvl, I, blk) in TreeIterator(tree)
+        if leafsonly && !isleaf(tree, lvl, I)
+            continue
+        end
+        
         x = op(x, f(lvl, I, blk))
     end
 
