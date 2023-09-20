@@ -448,7 +448,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, o
 
 
             if (iter % progress_every) == 0
-                @logprogress (t / tend)
+                @logprogress iter * dt / (iter * dt + tend - t) #(t / tend)
                 msg = _msg()
                 #percent = format("{:.1f}", 100 * t / tend)
                 @info "\n```\n$msg\n```" sticky=true _id=:report
