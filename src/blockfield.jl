@@ -250,7 +250,8 @@ Creates a new block and returns its index.
 """
 function newblock!(f::_ScalarBlockFieldA{D, M, G, T}) where {D, M, G, T}
     S = M + 2G
-    append!(f.u, Iterators.repeated(zero(T), S^D))
+    l = size(f.u, ndims(f.u))
+    resize!(f.u, (ntuple(_ -> S, Val(D))..., l + 1))
     return length(f)
 end
 
@@ -266,7 +267,8 @@ Creates a series of new blocks returns the final length.
 """
 function newblocks!(f::_ScalarBlockFieldA{D, M, G, T}, n) where {D, M, G, T}
     S = M + 2G
-    append!(f.u, Iterators.repeated(zero(T), n * S^D))
+    l = size(f.u, ndims(f.u))
+    resize!(f.u, (ntuple(_ -> S, Val(D))..., l + n))
     return length(f)
 end
 
@@ -284,7 +286,8 @@ Creates a new block and returns its index.
 """
 function newblock!(f::_VectorBlockFieldA{D, M, G, T}) where {D, M, G, T}
     S = M + 2G + 1
-    append!(f.u, Iterators.repeated(zero(T), D * S^D))
+    l = size(f.u, ndims(f.u))
+    resize!(f.u, (ntuple(_ -> S, Val(D))..., D, l + 1))
     return length(f)
 end
 
@@ -301,7 +304,8 @@ Creates a series of new blocks returns the final length.
 """
 function newblocks!(f::_VectorBlockFieldA{D, M, G, T}, n) where {D, M, G, T}
     S = M + 2G + 1
-    append!(f.u, Iterators.repeated(zero(T), n * D * S^D))
+    l = size(f.u, ndims(f.u))
+    resize!(f.u, (ntuple(_ -> S, Val(D))..., D, l + n))
     return length(f)
 end
 
