@@ -46,6 +46,10 @@ function photoionization!(tree::Tree{D}, dni, phfields, r, u1,
                           phmodel, h, conn, geom) where D
     (;term, source, target, bc, iter) = phmodel
     for i in eachindex(term)
+        for l in 1:length(tree)
+            fill_ghost!(phfields[i], l, conn, bc)
+        end
+
         helm = HelmholtzDiscretization{D, _order(phmodel), typeof(term[i].k2)}(term[i].k2)
         for j in 1:iter
             vcycle!(phfields[i], dni[source], r, u1, h^2,
