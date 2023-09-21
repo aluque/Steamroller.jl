@@ -372,9 +372,10 @@ a scalar, where `D` is the dimensionality.  Remaining `kwargs` are passed to ref
 Returns the new connectivity.
 """
 function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditions; kwargs...) where T
-    (;h, stencil) = conf
-    (;freeblocks, n) = fields
+    (;h, stencil, fbc) = conf
+    (;freeblocks, n, photo) = fields
 
+    
     prevn = 0
     conn = connectivity(tree, stencil)
     while prevn != nblocks(tree)
@@ -388,6 +389,25 @@ function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditi
         connectivity!(conn, tree, stencil)
     end
 
+    for ni in n
+        fill_ghost_copy!(ni, conn)
+        fill_ghost_bnd!(ni, conn, fbc)
+        fill_ghost_interp!(ni, conn)
+    end
+
+    for ph in photo
+        ph .= 0
+    end
+    
+    fields.flux .= 0
+    fields.u .=0
+    fields.u1 .= 0
+    fields.r .= 0
+    fields.eabs .= 0
+    fields.q .= 0
+    fields.q1 .= 0
+    fields.e .= 0
+    
     return conn
 end
 
