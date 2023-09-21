@@ -156,13 +156,17 @@ Interpolate all fields that require interpolation in `sf`, from block `src` into
 `sub` being the sub-block local coordinates.
 """
 function interp!(sf::StreamerFields, dest, src, sub)
-    (;n, u, m) = sf
+    (;n, u, photo, m) = sf
     for ni in n
         interp!(ni[dest], validindices(ni), ni[src], subblockindices(ni, sub))
     end
     
     interp!(u[dest], validindices(u), u[src], subblockindices(u, sub))
 
+    for phf in photo
+        interp!(phf[dest], validindices(phf), phf[src], subblockindices(phf, sub))
+    end
+    
     # Refinement marking are initialized as zero
     m[dest] .= 0
 end
