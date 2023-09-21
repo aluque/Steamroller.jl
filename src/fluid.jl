@@ -79,6 +79,75 @@ end
 
 
 """
+Compute electron fluxes.
+"""
+@bkernel function flux_weno!((tree, level, blkpos, blk),
+                        flux::VectorBlockField{D, M, G},
+                        ne::ScalarBlockField{D, M, G},
+                        e::VectorBlockField{D, M, G},
+                        eabs::ScalarBlockField{D, M, G},
+                        h, trans, maxdt) where {D, M, G}
+    gbl0 = global_first(blkpos, M)
+    h /= 1 << (level - 1)
+    @assert G > 2
+    
+    for d in 1:D
+        for I in validindices(e, d)
+            # Compute flux between I and I1, which is 1 cell lower in the d dimension.
+            I1 = Base.setindex(I, I[d] - 1, d)
+                        
+            ed = e[I, d, blk]
+
+            eabs1 = (eabs[I, blk] + eabs[I1, blk]) / 2
+            μ = mobility(trans, eabs1)
+            diff = diffusion(trans, eabs1)
+            
+            v = -ed * μ
+            sv = signbit(v) ? -1 : 1
+            
+            # We take five cells: three upstream and two downstream of the interface
+            stencil = @SVector([I[d] + div(-5sv - 1, 2),
+                                I[d] + div(-3sv - 1, 2),
+                                I[d] + div(-sv - 1, 2),
+                                I[d] + div(sv - 1, 2),
+                                I[d] + div(3sv - 1, 2)])
+            S = ntuple(j -> Base.setindex(I, stencil[j], d), Val(5))
+            uu = SVector(ntuple(j -> ne[S[j], blk], Val(5)))
+
+            u1 = dot(uu, @SVector [3//8, -5//4, 15//8, 0, 0])
+            u2 = dot(uu, @SVector [0, -1//8, 3//4, 3//8, 0])
+            u3 = dot(uu, @SVector [0, 0, 3//8, 3//4, -1//8])
+            
+            β1 = (4 * uu[1]^2 - 19 * uu[1] * uu[2] + 25 * uu[2]^2 + 11 * uu[1] * uu[3]
+                  - 31 * uu[2] * uu[3] + 10 * uu[3]^2) / 3
+            β2 = (4 * uu[2]^2 - 13 * uu[2] * uu[3] + 13 * uu[3]^2 + 5 * uu[2] * uu[4] - 13 * uu[3] * uu[4]
+                  + 4 * uu[4]^2) / 3
+            β3 = (10 * uu[3]^2 - 31 * uu[3] * uu[4] + 25 * uu[4]^2 + 11 * uu[3] * uu[5] - 19 * uu[4] * uu[5]
+                  + 4 * uu[5]^2) / 3
+            β = @SVector [β1, β2, β3]
+            γ = @SVector [1//16, 5//8, 5//16]
+            ϵ = 1e-14
+            
+            w1 = @. γ / (ϵ + β)^2
+            w = w1 ./ sum(w1) 
+            uhalf = dot(w, @SVector [u1, u2, u3])
+            
+            F = v * uhalf
+            
+            # The diffusion flux
+            F += diff * (ne[I1, blk] - ne[I, blk]) / h
+            flux[I, d, blk] = F
+
+            # Compute max dt from CFL, diffusion and Maxwell relaxation)
+            maxdt[blk] = min(h / abs(v),
+                             h^2 / diff / 4,
+                             (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F))
+        end
+    end    
+end
+
+
+"""
 Correct fluxes from a fine grid to ensure that they are the same as in a coarser grid.
 
 * `src` is the array for the coarse grid.
