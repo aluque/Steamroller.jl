@@ -263,6 +263,8 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
 
     # The electron density is always first among species.
     ne = ni[1]
+    restrict_full!(ne, conn)
+
     for l in 1:length(tree)        
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)

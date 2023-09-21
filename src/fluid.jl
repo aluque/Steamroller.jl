@@ -39,6 +39,8 @@ Compute electron fluxes.
                         e::VectorBlockField{D, M, G},
                         eabs::ScalarBlockField{D, M, G},
                         h, trans, maxdt) where {D, M, G}
+    isleaf(tree, level, blkpos) || return
+
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     
