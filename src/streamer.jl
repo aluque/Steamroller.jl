@@ -306,7 +306,7 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     end
 
     resize!(maxdt, max(length(maxdt), length(ne)))
-    flux!(tree, flux, ne, e, eabs, h, trans, maxdt)
+    flux_weno!(tree, flux, ne, e, eabs, h, trans, maxdt)
     restrict_flux!(flux, conn)
 
     chemderivs!(tree, dni, ni, eabs, chem, Val{true}(), Val{true}())    
