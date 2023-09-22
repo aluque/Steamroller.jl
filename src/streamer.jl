@@ -141,6 +141,29 @@ function newblock!(sf::StreamerFields)
     newblock!(m, j)
     newblock!(refdelta, j)
 
+    # When debugging it is useful to initialize everything as NaN to make sure that the initialization
+    # values are never used.
+    if false
+        for f in [q, q1, u, u1, r, eabs, e, flux]
+            f[j] .= NaN       
+        end
+        
+        for i in eachindex(n)
+            n[i][j] .= NaN
+            n1[i][j] .= NaN
+        end
+        
+        for i in eachindex(photo)
+            photo[i][j] .= NaN
+        end
+        
+        for dni in dn
+            for dnii in dni
+                dnii[j] .= NaN
+            end
+        end
+    end
+    
     return j
 end
 
