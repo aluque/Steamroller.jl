@@ -126,7 +126,7 @@ Compute electron fluxes.
                   + 4 * uu[5]^2) / 3
             β = @SVector [β1, β2, β3]
             γ = @SVector [1//16, 5//8, 5//16]
-            ϵ = 1e-14
+            ϵ = 1e-6 * maximum(uu)^2
             
             w1 = @. γ / (ϵ + β)^2
             w = w1 ./ sum(w1) 
