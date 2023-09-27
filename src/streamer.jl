@@ -296,7 +296,7 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         fill_ghost!(u, l, conn, pbc)
     end
     
-    electric_field!(tree, e, eabs, u, h, eb)
+    electric_field!(tree, e, eabs, u, h, t, eb)
 
     for l in 1:length(tree)
         fill_ghost!(eabs, l, conn, ExtrapolateConst())

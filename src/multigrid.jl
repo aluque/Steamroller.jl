@@ -422,12 +422,15 @@ end
                                   f::VectorBlockField{D, M, G},
                                   fabs::ScalarBlockField{D, M, G},
                                   u::ScalarBlockField{D, M, G}, h,
-                                  e0) where {D, M, G}
+                                  t, efunc::F) where {D, M, G, F <: Function}
+    gbl0 = global_first(coord, M)
     h /= (1 << (level - 1))
     
     for d in 1:D
         for I in validindices(f, d)
-            I1 = Base.setindex(I, I[d] - 1, d)
+            x = SVector(ntuple(d1 -> h * (I[d1] - G + gbl0[d1] - 1) - ((d == d1) ? h : h/2), Val(D)))
+            e0 = efunc(x, t)
+            I1 = Base.setindex(I, I[d] - 1, d)            
             f[I, d, blk] = (u[I1, blk] - u[I, blk]) / h + e0[d]
         end
     end
@@ -443,3 +446,4 @@ end
     end
 end
 
+@bkernel electric_field!((tree, level, coord, blk), f, fabs, u, h, t, e0::SVector) = electric_field!((tree, level, coord, blk), f, fabs, u, h, t, (x, t) -> e0)
