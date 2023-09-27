@@ -111,13 +111,16 @@ function _main(;
                # Do not derefine if the resulting spacing is larger than this
                derefine_max_h=T(20e-6),
                
-               # Do not derefine below this level
+               # Do not refine below this level
                refine_min_h=T(3e-6),
 
                # The parameters for the Teunissen refinement criterium
                refine_teunissen_c0=T(0.5),
                refine_teunissen_c1=T(1.2),
                
+               # The type of flux scheme
+               flux_scheme=:koren,
+
                # Plot the evolution of the streamer?
                plot=false,
                
@@ -142,12 +145,18 @@ function _main(;
     
     Polyester.reset_threads!()
     
+    fluxschem = flux_scheme == :koren ? sr.FluxSchemeKoren() :
+        flux_scheme == :weno ? sr.FluxSchemeWENO() :
+        @error "Unknown flux scheme $flux_scheme"
+
+    G = sr.needghost(fluxschem)
+    
     # This makes block size of 1 cm.
     h = L / M
     derefine_minlevel = sr.levelabove(derefine_max_h, h)
     refine_maxlevel = sr.levelbelow(refine_min_h, h)
         
-    fields = sr.StreamerFields(T, 2, length(phmodel), D, M, H, Val(storage))
+    fields = sr.StreamerFields(T, 2, length(phmodel), D, M, G, H, Val(storage))
     tree = sr.Tree(D, CartesianIndices(ntuple(i -> rootsize[i], Val(D))), maxlevel)
 
     # Boundary conditions for the Poisson equation
@@ -185,8 +194,9 @@ function _main(;
     ref = sr.PersistingRef(refine_persistence,
                            sr.AndRef(sr.TimeLimitedRef(zero(T), refine_density_upto, nref), tref))
 
+
     # Set the streamer configuration
-    conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, trans, chem,
+    conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, trans, fluxschem, chem,
                            phmodel, ref, stencil, dt_safety_factor)
     
     # Start with a full tree up to level 3
@@ -194,7 +204,7 @@ function _main(;
     sr.newblocks!(fields, sr.nblocks(tree))
 
     conn = sr.initial_conditions!(fields, conf, tree, nref, initial_conditions,
-                                  minlevel=3, maxlevel=refine_maxlevel)
+                                  minlevel=derefine_minlevel, maxlevel=refine_maxlevel)
     
     @info "Number of blocks after initial conditions!" nblocks=sr.nblocks(tree)
     
@@ -204,7 +214,7 @@ function _main(;
     aemax = T[]
 
     function _report(t)
-        (emax, r) = findmax(fields.eabs, tree, h)
+        (emax, r) = sr.findmaxloc(fields.eabs, tree, h)
         
         zemax = r[end]
         @info "Snapshot" t zemax emax min_h=(h / 2^(findlast(!isempty, tree) - 1))
@@ -224,9 +234,11 @@ function _main(;
             GC.gc()
         end
     end
-        
-    sr.run!(fields, conf, tree, conn, tend; output,
+    
+    sr.run!(fields, conf, tree, conn, tend; output, derefine_minlevel, refine_maxlevel,
             output_callbacks=(_report, _plot))
+    df = DataFrame(t=at, z=az, emax=aemax)
+    show(resultdf(df; v))
 
     return NamedTuple(Base.@locals)
 end

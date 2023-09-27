@@ -29,11 +29,19 @@ Compute the derivatives resulting from the flux of electrons.
     end    
 end
 
+abstract type AbstractFluxScheme; end
+struct FluxSchemeKoren <: AbstractFluxScheme; end
+struct FluxSchemeWENO <: AbstractFluxScheme; end
+
+# Return the number of ghost cells required for a given flux scheme
+needghost(::FluxSchemeKoren) = 2
+needghost(::FluxSchemeWENO) = 4
+
 
 """
 Compute electron fluxes.
 """
-@bkernel function flux!((tree, level, blkpos, blk),
+@bkernel function flux!((tree, level, blkpos, blk), schem::FluxSchemeKoren,
                         flux::VectorBlockField{D, M, G},
                         ne::ScalarBlockField{D, M, G},
                         e::VectorBlockField{D, M, G},
@@ -81,7 +89,7 @@ end
 """
 Compute electron fluxes.
 """
-@bkernel function flux_weno!((tree, level, blkpos, blk),
+@bkernel function flux!((tree, level, blkpos, blk), schem::FluxSchemeWENO,
                         flux::VectorBlockField{D, M, G},
                         ne::ScalarBlockField{D, M, G},
                         e::VectorBlockField{D, M, G},

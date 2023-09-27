@@ -215,6 +215,7 @@ struct StreamerConf{T, D,
                     BC,
                     L  <: LaplacianDiscretization,
                     TR <: AbstractTransportModel,
+                    F  <: AbstractFluxScheme,
                     CH <: AbstractChemistry,
                     PH <: PhotoionizationModel,
                     R  <: AbstractRefinement,
@@ -240,6 +241,9 @@ struct StreamerConf{T, D,
     "Transport model"
     trans::TR
 
+    "Flux discretization scheme"
+    fluxschem::F
+    
     "Chemistry model"
     chem::CH
 
@@ -263,7 +267,7 @@ Compute derivatives starting from densities ni and stores them in dni.
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn, fmgiter=2) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
-    (;eb, pbc, h, trans, chem, phmodel, geom, lpl, pbc, fbc) = conf
+    (;eb, pbc, h, trans, fluxschem, chem, phmodel, geom, lpl, pbc, fbc) = conf
     
     netcharge!(tree, q, ni, chem)
 
@@ -304,9 +308,9 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     for l in 1:length(tree)
         fill_ghost!(eabs, l, conn, ExtrapolateConst())
     end
-
+    
     resize!(maxdt, max(length(maxdt), length(ne)))
-    flux_weno!(tree, flux, ne, e, eabs, h, trans, maxdt)
+    flux!(tree, fluxschem, flux, ne, e, eabs, h, trans, maxdt)
     restrict_flux!(flux, conn)
 
     chemderivs!(tree, dni, ni, eabs, chem, Val{true}(), Val{true}())    
