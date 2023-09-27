@@ -267,6 +267,9 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     
     netcharge!(tree, q, ni, chem)
 
+    # This is only needed for higher-order discretization so one can save a bit of time
+    # by not doing this restriction always.
+    restrict_full!(q, conn)
     for l in 1:length(tree)
         fill_ghost!(q, l, conn, pbc)
         rhs_level!(q1, q, tree[l], lpl, geom)
