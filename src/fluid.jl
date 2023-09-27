@@ -41,7 +41,6 @@ Compute electron fluxes.
                         h, trans, maxdt) where {D, M, G}
     isleaf(tree, level, blkpos) || return
 
-    gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     
     for d in 1:D
