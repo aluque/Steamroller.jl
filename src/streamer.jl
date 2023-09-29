@@ -69,9 +69,7 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
     """
     Initialize a `StreamerFields` instance.
     """
-    function StreamerFields(T, K, L, D, M, G, H, storage=Val(:contiguous), flux_same_as_e=false)
-        TH = SVector{H, T}
-
+    function StreamerFields(T, K, L, D, M, G, storage=Val(:contiguous), flux_same_as_e=false)
         kscalars(k) = SVector{K}(ntuple(i -> ScalarBlockField{D, M, G, T}(storage), Val(K)))
         n = kscalars(K)
         n1 = kscalars(K)
@@ -407,7 +405,7 @@ a scalar, where `D` is the dimensionality.  Remaining `kwargs` are passed to ref
 
 Returns the new connectivity.
 """
-function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditions; kwargs...) where T
+function initial_conditions!(fields::StreamerFields{T, K}, conf, tree, ref, conditions; kwargs...) where {T, K}
     (;h, stencil, fbc) = conf
     (;freeblocks, n, photo) = fields
 
@@ -421,6 +419,12 @@ function initial_conditions!(fields::StreamerFields{T}, conf, tree, ref, conditi
             maptree!(func, n[species], tree, h)
         end
 
+        for i in 1:K
+            if count(==(i), first.(conditions)) == 0
+                maptree!(Background{T}(0.0), n[i], tree, h)
+            end
+        end
+        
         refine!(fields, conf, tree, conn, T(0.0), T(Inf); ref, kwargs...)        
         connectivity!(conn, tree, stencil)
     end

@@ -30,9 +30,8 @@ end
 
 @inline Base.@assume_effects :foldable function prefetch(tbl::LookupTable, x)
     fx = tbl.f(x)
-    
     i = searchsortedlast(tbl.fx, fx)
-
+    
     if i == 0
         # Allow constant-value extrapolation below the range
         return (1, zero(promote_type(eltype(tbl.fx), typeof(fx))))
@@ -48,7 +47,7 @@ end
 _prefetch(tbl, x, ::Nothing) = prefetch(tbl, x)
 _prefetch(tbl, x, p) = p
 
-@inline function (tbl::LookupTable)(x, prefetch=nothing)
+@inline function (tbl::LookupTable)(x; prefetch=nothing)
     (i, w) = _prefetch(tbl, x, prefetch)
 
     @inbounds gy = w * tbl.gy[i + 1] + (1 - w) * tbl.gy[i]
@@ -56,7 +55,7 @@ _prefetch(tbl, x, p) = p
     return tbl.ginv(gy)
 end
 
-@inline function (tbl::LookupTable)(x, col::Integer, prefetch=nothing)
+@inline function (tbl::LookupTable)(x, col::Integer; prefetch=nothing)
     (i, w) = _prefetch(tbl, x, prefetch)
 
     @inbounds gy = w * tbl.gy[col][i + 1] + (1 - w) * tbl.gy[col][i]

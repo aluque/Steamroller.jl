@@ -77,7 +77,7 @@ end
 
 """
 A limited 2-species chemistry model derived from a lookup table.
-    """
+"""
 @kwdef struct NetIonizationLookup{L <: LookupTable} <: AbstractChemistry
     lookup::L
     ionization_index::Int
@@ -100,4 +100,25 @@ function derivs(chem::NetIonizationLookup, n, eabs, prephoto::Val{false})
     return @SVector [dne, dne]
 end
 
+nspecies(chem::NetIonizationLookup) = 2
 
+"""
+A reaction scheme based on the chemise.jl framework.
+"""
+struct Chemise{RS <: ReactionSet} <: AbstractChemistry
+    rs::RS
+end
+
+@inline species_charge(c::Chemise) = species_charge(c.rs)
+
+# Before computing photo-ionization: we only include ionization
+function derivs(chem::Chemise, n, eabs, prephoto::Val{true})
+    return derivatives(chem.rs, Val((:pre,)), n, eabs)
+end
+
+# After computing photo-ionization: everything else, including attachment
+function derivs(chem::Chemise, n, eabs, prephoto::Val{false})
+    return derivatives(chem.rs, Val((:post,)), n, eabs)
+end
+
+nspecies(chem::Chemise) = length(species(chem.rs))
