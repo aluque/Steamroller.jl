@@ -36,7 +36,7 @@ source for photo-ionization.
     isleaf(tree, level, blkpos) || return
 
     for I in validindices(dn[1])
-        dn1 = derivs(chem, species(n, I, blk), eabs[I, blk], prephoto)
+        dn1 = derivs(chem, prephoto, species(n, I, blk), eabs[I, blk])
         if vinit
             for i in 1:K
                 dn[i][I, blk] = dn1[i]
@@ -59,14 +59,14 @@ struct NetIonization{TR <: AbstractTransportModel} <: AbstractChemistry
 end
 
 # Before computing photo-ionization: we only include ionization
-function derivs(chem::NetIonization, n, eabs, prephoto::Val{true})
+function derivs(chem::NetIonization, prephoto::Val{:pre}, n, eabs)
     # n[1] is the electron density
     dne = mobility(chem.trans, eabs) * eabs * n[1] * townsend(chem.trans, eabs)
     return @SVector [dne, dne]
 end
 
 # After computing photo-ionization: everything else, including attachment
-function derivs(chem::NetIonization, n, eabs, prephoto::Val{false})
+function derivs(chem::NetIonization, prephoto::Val{:post}, n, eabs)
     # n[1] is the electron density
     dne = -mobility(chem.trans, eabs) * eabs * n[1] * attachment(chem.trans, eabs)
     return @SVector [dne, dne]
@@ -87,14 +87,14 @@ end
 @inline species_charge(::NetIonizationLookup) = @SVector([-1, 1])
 
 # Before computing photo-ionization: we only include ionization
-function derivs(chem::NetIonizationLookup, n, eabs, prephoto::Val{true})
+function derivs(chem::NetIonizationLookup, prephoto::Val{:pre}, n, eabs)
     # n[1] is the electron density
     dne = n[1] * chem.lookup(eabs, chem.ionization_index)
     return @SVector [dne, dne]
 end
 
 # After computing photo-ionization: everything else, including attachment
-function derivs(chem::NetIonizationLookup, n, eabs, prephoto::Val{false})
+function derivs(chem::NetIonizationLookup, prephoto::Val{:post}, n, eabs)
     # n[1] is the electron density
     dne = -n[1] * chem.lookup(eabs, chem.attachment_index)
     return @SVector [dne, dne]
@@ -112,13 +112,13 @@ end
 @inline species_charge(c::Chemise) = species_charge(c.rs)
 
 # Before computing photo-ionization: we only include ionization
-function derivs(chem::Chemise, n, eabs, prephoto::Val{true})
-    return derivatives(chem.rs, Val((:pre,)), n, eabs)
+function derivs(chem::Chemise, prephoto::Val{:pre}, n, eabs)
+    return derivs(chem.rs, Val((:pre,)), n, eabs)
 end
 
 # After computing photo-ionization: everything else, including attachment
-function derivs(chem::Chemise, n, eabs, prephoto::Val{false})
-    return derivatives(chem.rs, Val((:post,)), n, eabs)
+function derivs(chem::Chemise, prephoto::Val{:post}, n, eabs)
+    return derivs(chem.rs, Val((:post,)), n, eabs)
 end
 
 nspecies(chem::Chemise) = length(species(chem.rs))

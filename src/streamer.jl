@@ -311,10 +311,10 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     flux!(tree, fluxschem, flux, ne, e, eabs, h, trans, maxdt)
     restrict_flux!(flux, conn)
 
-    chemderivs!(tree, dni, ni, eabs, chem, Val{true}(), Val{true}())    
+    chemderivs!(tree, dni, ni, eabs, chem, Val{:pre}(), Val{true}())    
     # Here goes photo-ionization
     photoionization!(tree, dni, photo, r, u1, phmodel, h, conn, geom)
-    chemderivs!(tree, dni, ni, eabs, chem, Val{false}(), Val{false}())
+    chemderivs!(tree, dni, ni, eabs, chem, Val{:post}(), Val{false}())
     fluxderivs!(tree, dni[1], flux, h, geom)
 end
 

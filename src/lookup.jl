@@ -128,3 +128,42 @@ function loadtable(tbl, T::Type=Float64; resample_into=nothing,
     LookupTable(fx, gy; f, g, ginv)
 end
 
+
+"""
+    Initialize a multi-column lookuptable initially without y columns.
+"""
+function inittable(x, T::Type=Float64;
+                   f=identity, g=identity, ginv=identity, kw...)
+    fx = approxrange(f.(x); kw...)
+    gy = Vector{T}[]
+
+    LookupTable(fx, gy; f, g, ginv)
+end
+
+
+"""
+    Add a new column to an existing multi-column table, re-sampling into the existing x data.
+    Return the index of the new data.
+"""
+function addcol(tbl, x, y)
+    (;fx, gy, f, g) = tbl
+    fx1 = f.(x)
+    gy1 = g.(y)
+    
+    gy2 = linear_interpolation(fx1, gy1, extrapolation_bc=NaN).(fx)
+    push!(gy, gy2)
+
+    return lastindex(gy)
+end
+
+
+"""
+    Add a new column to an existing multi-column table, re-sampling into the existing x data.
+    The new data is read from a delimited file `fname`.
+"""
+function addcol(tbl::LookupTable, fname; xcol=1, ycol=2)
+    data = readdlm(fname, eltype(eltype(tbl.gy)), comments=true)
+    return addcol(tbl, data[:, xcol], data[:, ycol])
+end
+
+    

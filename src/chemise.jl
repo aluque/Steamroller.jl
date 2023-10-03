@@ -43,7 +43,7 @@ to activate only certain groups, for example when computing derivatives pre/post
 struct Reaction{S <: Signature, K, G}
     signature::S
     k::K
-    function Reaction(signature::S, k::K, G::Symbol) where {S <: Signature, K}
+    function Reaction(signature::S, k::K, G::Union{Symbol, Bool, Nothing}) where {S <: Signature, K}
         new{S, K, G}(signature, k)
     end
     function Reaction(signature::S, k::K) where {S <: Signature, K}
@@ -51,9 +51,10 @@ struct Reaction{S <: Signature, K, G}
     end
 end
 
-Reaction(s::String, k) = Reaction(parse(Signature, s), k)
+Reaction(s::String, k, g=nothing) = Reaction(parse(Signature, s), k, g)
 
-isactive(::Type{Reaction{S, H, G}}, groups) where {S, H, G} = isempty(groups) || G in groups
+isactive(::Type{Reaction{S, H, G}}, groups::Union{Tuple, Int}) where {S, H, G} = isempty(groups) || G in groups
+isactive(::Type{Reaction{S, H, G}}, groups::Symbol) where {S, H, G} = groups == G
 
 signature(::Reaction{S}) where S = S
 signature(::Type{Reaction{S, K, G}}) where {S, K, G} = S
@@ -71,8 +72,10 @@ evalk(f::Real, args...) = f
 evalk(f::Function, args...) = f(args...)
 
 varname(::Type{Reaction{S, K, G}}) where {S, K, G} = varname(K)
+
 varname(::Type{T}) where T <: Real = nothing
 varname(::Type{T}) where T <: Function = nothing
+varname(::Type{T}) where T = nothing
 
 
 """
@@ -95,11 +98,17 @@ struct RateLookup{L, H}
     lookup::L
     index::Int
 
-    function RateLookup(lookup::L, index) where L
+    function RateLookup(lookup::L, index::Int) where L
         H = hash(L)
         new{L, H}(lookup, index)
     end
 end
+
+function RateLookup(lookup, fname::String)
+    index = addcol(lookup, fname)
+    return RateLookup(lookup, index)
+end
+
 
 @inline evalk(f::RateLookup, args...; prefetch=nothing) = @inline f.lookup(args..., f.index; prefetch)
 @inline prefetch(f::RateLookup, args...) = prefetch(f.lookup, args...)
@@ -126,12 +135,22 @@ struct ReactionSet{S, R, F, FT}
     end
 end
 
-function ReactionSet(reactions::Pair{<:Signature, <:Any}...; fixed=(), fixedval=SA[])
-    species = tuple(list_of_species(map(first, reactions), fixed)...)
-    _reactions = map(((s, k),) -> k isa Pair ? Reaction(s, first(k), last(k)) : Reaction(s, k), reactions)
+function ReactionSet(reactions::Pair...; fixed=(), fixedval=SA[], fix=nothing)
+    if !isnothing(fix)
+        fixed = (fixed..., first.(fix)...)
+        fixedval = SA[fixedval..., last.(fix)...]
+    end
+
+    _reactions = vcat(map(((g, r),) -> map(((sig, k),) -> Reaction(sig, k, g), r), reactions)...)
+    species = tuple(list_of_species(_reactions, fixed)...)
+    
     return ReactionSet(species, tuple(_reactions...), fixed, fixedval)
 end
 
+ReactionSet(reactions::Vector; kw...) = ReactionSet(nothing => reactions; kw...)
+
+
+nspecies(rs::ReactionSet{S}) where {S} = length(S)
 
 @generated function species_charge(::ReactionSet{S}) where S
     guess_charge(y) = y == :e ? -1 : count(==('+'), string(y)) - count(==('-'), string(y))
@@ -169,6 +188,9 @@ end
 
 
 species(rs::ReactionSet{S}) where S = S
+idx(rs::ReactionSet{S}, s::Symbol) where S = speciesindex(S, s)
+idx(rs::ReactionSet{S}, s::String) where S = speciesindex(S, Symbol(s))
+
 fixed_species(rs::ReactionSet{S, R, F}) where {S, R, F} = F
 speciesindex(S, s::Symbol) = findfirst(==(s), S)
 
@@ -237,10 +259,10 @@ end
 """
 Compute derivatives for the reaction set `rs` with given densities `n` and external variables
 `args...` (e.g. electric field). `groups` is a possible set of reaction groups that we want to
-(exclusively) activate; it must be provided as `Val((:group1, :group2...))`.
+(exclusively) activate; it must be provided as `Val((:group1, :group2...))` or Val(group).
 """
-@generated function derivatives(rs::ReactionSet{S, R, F}, groups::Val{G}, n::AbstractVector,
-                                args...) where {S, R, F, G}
+@generated function derivs(rs::ReactionSet{S, R, F}, groups::Val{G}, n::AbstractVector,
+                            args...) where {S, R, F, G}
     rates = :(())
     for (idx, r) in enumerate(R.parameters)
         if isactive(r, G)
@@ -261,14 +283,14 @@ Compute derivatives for the reaction set `rs` with given densities `n` and exter
     return expr
 end
 
-derivatives(rs::ReactionSet{S, R, F}, n::AbstractVector, args...) where {S, R, F} = derivatives(rs, Val{()}(), n, args...)
+derivs(rs::ReactionSet{S, R, F}, n::AbstractVector, args...) where {S, R, F} = derivs(rs, Val{()}(), n, args...)
 
 
 function Base.parse(::Type{Signature}, signature)
     arrow = r"\s*[-=]+>\s*"
     plus = r"\s+\+\s+"
 
-    (lhs, rhs) = (split(x, plus) for x in split(signature, arrow))
+    (lhs, rhs) = (filter(s -> length(s) > 0, split(x, plus)) for x in split(signature, arrow))
     lhs, rhs = [[_multiplicity(item) for item in x] for x in (lhs, rhs)]
 
     return Signature(Tuple(lhs), Tuple(rhs))
