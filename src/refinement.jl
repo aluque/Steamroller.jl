@@ -142,7 +142,7 @@ The result is stored in `m` as true/false.
 """
 @bkernel function refmark!((tree, lvl, coord, blk), m::ScalarBlockField{D},
                            ref::AbstractRefinement, h, t, dt) where {D}    
-    h /= (1 << lvl)
+    h /= (1 << (lvl - 1))
     
     # m[blk] .= false
 
