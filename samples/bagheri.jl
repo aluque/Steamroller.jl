@@ -156,7 +156,7 @@ function _main(;
     derefine_minlevel = sr.levelabove(derefine_max_h, h)
     refine_maxlevel = sr.levelbelow(refine_min_h, h)
         
-    fields = sr.StreamerFields(T, 2, length(phmodel), D, M, G, H, Val(storage))
+    fields = sr.StreamerFields(T, 2, length(phmodel), D, M, G, Val(storage))
     tree = sr.Tree(D, CartesianIndices(ntuple(i -> rootsize[i], Val(D))), maxlevel)
 
     # Boundary conditions for the Poisson equation
@@ -197,7 +197,7 @@ function _main(;
 
     # Set the streamer configuration
     conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, trans, fluxschem, chem,
-                           phmodel, ref, stencil, dt_safety_factor)
+                           phmodel, sr.TrivialDensityScaling(), ref, stencil, dt_safety_factor)
     
     # Start with a full tree up to level 3
     sr.populate!(tree, 3)
