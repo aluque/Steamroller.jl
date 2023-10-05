@@ -136,6 +136,7 @@ const _ScalarBlockFieldA{D, M, G, T, N, A} = ScalarBlockField{D, M, G, T, N, A} 
 const _VectorBlockFieldV{D, M, G, T, N, A} = VectorBlockField{D, M, G, T, N, A} where {A <: Vector{<:MArray}}
 const _VectorBlockFieldA{D, M, G, T, N, A} = VectorBlockField{D, M, G, T, N, A} where {A <: ElasticArray}
 
+dimension(::AbstractBlockField{D}) where {D} = D
 
 _length(u::ElasticArray) = size(u, ndims(u))
 _length(u::Vector{<:AbstractArray}) = length(u)

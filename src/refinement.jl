@@ -78,17 +78,24 @@ compatible(ref::DensityRef, (lvl, coord, blk), I, h, t) = (h < ref.hmax) || (ref
 The refinement criterium proposed in Teunnisen (2017), which depends on the electric field, `eabs`,
 a transport model `transport` and two parameters `c0`, `c1`.
 """
-struct TeunissenRef{T, SBF <: ScalarBlockField, S <: AbstractTransportModel} <: AbstractRefinement
+struct TeunissenRef{T, SBF <: ScalarBlockField,
+                    S <: AbstractTransportModel, DS <: AbstractDensityScaling} <: AbstractRefinement
     eabs::SBF
     transport::S
     c0::T
     c1::T
+    dens::DS
 end
 
+TeunissenRef(eabs, transport, c0, c1) = TeunissenRef(eabs, transport, c0, c1, TrivialDensityScaling())
+    
 function compatible(ref::TeunissenRef, (lvl, coord, blk), I, h, t)
-    (;eabs, transport, c0, c1) = ref
+    (;eabs, transport, dens, c0, c1) = ref
     I1 = addghost(eabs, I)
-    maxh = c0 * c1 / townsend(transport, c1 * eabs[I1, blk])
+    gbl0 = global_first(coord, sidelength(ref.eabs))
+    x = ntuple(d -> h * (gbl0[d] + I[d] - 1) - h / 2, Val(dimension(ref.eabs)))
+    theta = nscale(dens, x)
+    maxh = c0 * c1 / (townsend(transport, c1 * eabs[I1, blk] / theta) * theta)
     return h < maxh
 end
 
@@ -103,6 +110,20 @@ end
 
 function compatible(ref::AndRef, (lvl, coord, blk), I, h, t)
     return compatible(ref.crit1, (lvl, coord, blk), I, h, t) && compatible(ref.crit2, (lvl, coord, blk), I, h, t)
+end
+
+
+"""
+A refinement criterium that combines two criteria in an "or" relationship, i.e. a cell
+is `compatible` if it is compatible according to criterium 1 or criterium 2.
+"""
+struct OrRef{R1, R2} <: AbstractRefinement
+    crit1::R1
+    crit2::R2
+end
+
+function compatible(ref::OrRef, (lvl, coord, blk), I, h, t)
+    return compatible(ref.crit1, (lvl, coord, blk), I, h, t) || compatible(ref.crit2, (lvl, coord, blk), I, h, t)
 end
 
 

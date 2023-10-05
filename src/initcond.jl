@@ -57,6 +57,83 @@ function (f::Gaussian)(r, z)
 end
 
 
+@kwdef struct Cylinder{T, F} <: AbstractInitialCondition{T}
+    "Function to set density at z"
+    func::F
+    
+    "Radius of the cylinder"
+    R::T
+
+    "x coordinate of the center"
+    x0::T = zero(R)
+
+    "y coordinate of the center"
+    y0::T = zero(R)
+
+    "Base of the cylinder"
+    z0::T = typemin(R)
+
+    "Top of the cylinder"
+    z1::T = typemax(R)
+end
+
+
+function (f::Cylinder)(x, y, z)
+    (;func, R, x0, y0, z0, z1) = f
+    return ifelse(z0 < z < z1 && (x - x0)^2 + (y - y0)^2 < R^2, func(z), zero(R)) 
+end
+
+function (f::Cylinder)(r, z)
+    (;func, R, z0, z1) = f
+    return ifelse(z0 < z < z1 && r < R, func(z), zero(R))
+end
+
+
+"""
+A funnel-like density where we vary the radius and density at the center.
+"""
+@kwdef struct Funnel{T, FR, FN} <: AbstractInitialCondition{T}
+    "Function to set density at z"
+    n0::FN
+    
+    "Radius of the cylinder"
+    a::FR
+
+    "Normalizing radius"
+    a0::T
+    
+    "x coordinate of the center"
+    x0::T = zero(a0)
+
+    "y coordinate of the center"
+    y0::T = zero(a0)
+
+    "Base of the cylinder"
+    z0::T = typemin(a0)
+
+    "Top of the cylinder"
+    z1::T = typemax(a0)
+end
+
+
+function (f::Funnel{T})(x, y, z) where T
+    (;n0, a, a0, x0, y0, z0, z1) = f
+    r = sqrt((x - x0)^2 + (y - y0)^2)
+    if z0 < z < z1 && r < a(z)
+        return n0(z) * (a(z) / a0)^2 * max(zero(T), 1 - (r / a(z))^2)
+    else
+        return zero(T)
+    end    
+end
+
+function (f::Funnel{T})(r, z) where T
+    (;n0, a, a0, z0, z1) = f
+    if z0 < z < z1 && r < a(z)
+        return n0(z) * (a0 / a(z))^2 * max(zero(T), 1 - (r / a(z))^2)
+    else
+        return zero(T)
+    end    
+end
 
 
 """

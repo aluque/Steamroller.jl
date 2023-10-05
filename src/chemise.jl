@@ -135,10 +135,10 @@ struct ReactionSet{S, R, F, FT}
     end
 end
 
-function ReactionSet(reactions::Pair...; fixed=(), fixedval=SA[], fix=nothing)
+function ReactionSet(reactions::Pair...; fixed=(), fixedval=(), fix=nothing)
     if !isnothing(fix)
         fixed = (fixed..., first.(fix)...)
-        fixedval = SA[fixedval..., last.(fix)...]
+        fixedval = (fixedval..., last.(fix)...)
     end
 
     _reactions = vcat(map(((g, r),) -> map(((sig, k),) -> Reaction(sig, k, g), r), reactions)...)
@@ -194,6 +194,9 @@ idx(rs::ReactionSet{S}, s::String) where S = speciesindex(S, Symbol(s))
 fixed_species(rs::ReactionSet{S, R, F}) where {S, R, F} = F
 speciesindex(S, s::Symbol) = findfirst(==(s), S)
 
+evalfixed(v::Real, x) = v
+evalfixed(f::Function, x) = f(x)
+
 function _rate_expr(S, F, L, idx, pref)
     if isnothing(pref)
         expr = :(*(evalk(rs.reactions[$idx], args...)))
@@ -211,7 +214,9 @@ function _rate_expr(S, F, L, idx, pref)
         
         i = speciesindex(F, spec)
         if !isnothing(i)
-            push!(expr.args, coeff == 1 ? :(rs.fixedval[$i]) : :(rs.fixedval[$i]^$coeff))
+            push!(expr.args, coeff == 1 ?
+                :(evalfixed(rs.fixedval[$i], x)) :
+                :(evalfixed(rs.fixedval[$i], x)^$coeff))
         end
     end
     return expr
@@ -260,8 +265,9 @@ end
 Compute derivatives for the reaction set `rs` with given densities `n` and external variables
 `args...` (e.g. electric field). `groups` is a possible set of reaction groups that we want to
 (exclusively) activate; it must be provided as `Val((:group1, :group2...))` or Val(group).
+`x` is a location; it can be ignored or used to set inhomogeneous fixed values.
 """
-@generated function derivs(rs::ReactionSet{S, R, F}, groups::Val{G}, n::AbstractVector,
+@generated function derivs(rs::ReactionSet{S, R, F}, groups::Val{G}, n::AbstractVector, x,
                             args...) where {S, R, F, G}
     rates = :(())
     for (idx, r) in enumerate(R.parameters)
@@ -283,7 +289,7 @@ Compute derivatives for the reaction set `rs` with given densities `n` and exter
     return expr
 end
 
-derivs(rs::ReactionSet{S, R, F}, n::AbstractVector, args...) where {S, R, F} = derivs(rs, Val{()}(), n, args...)
+derivs(rs::ReactionSet{S, R, F}, n::AbstractVector, x, args...) where {S, R, F} = derivs(rs, Val{()}(), n, x, args...)
 
 
 function Base.parse(::Type{Signature}, signature)
