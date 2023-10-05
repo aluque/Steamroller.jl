@@ -216,6 +216,7 @@ struct StreamerConf{T, D,
                     F  <: AbstractFluxScheme,
                     CH <: AbstractChemistry,
                     PH <: PhotoionizationModel,
+                    S  <: AbstractDensityScaling,
                     R  <: AbstractRefinement,
                     ST}
     "Spatial discretization at level 1"
@@ -248,6 +249,9 @@ struct StreamerConf{T, D,
     "Photoionization model"
     phmodel::PH
     
+    "Density scaling"
+    dens::S
+    
     "Refinement criterium"
     ref::R
 
@@ -265,7 +269,7 @@ Compute derivatives starting from densities ni and stores them in dni.
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn, fmgiter=2) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
-    (;eb, pbc, h, trans, fluxschem, chem, phmodel, geom, lpl, pbc, fbc) = conf
+    (;eb, pbc, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, pbc, fbc) = conf
     
     netcharge!(tree, q, ni, chem)
 
@@ -308,13 +312,13 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     end
     
     resize!(maxdt, max(length(maxdt), length(ne)))
-    flux!(tree, fluxschem, flux, ne, e, eabs, h, trans, maxdt)
+    flux!(tree, fluxschem, flux, ne, e, eabs, h, trans, dens, maxdt)
     restrict_flux!(flux, conn)
 
-    chemderivs!(tree, dni, ni, eabs, chem, Val{:pre}(), Val{true}())    
+    chemderivs!(tree, dni, ni, eabs, h, chem, dens, Val{:pre}(), Val{true}())    
     # Here goes photo-ionization
     photoionization!(tree, dni, photo, r, u1, phmodel, h, conn, geom)
-    chemderivs!(tree, dni, ni, eabs, chem, Val{:post}(), Val{false}())
+    chemderivs!(tree, dni, ni, eabs, h, chem, dens, Val{:post}(), Val{false}())
     fluxderivs!(tree, dni[1], flux, h, geom)
 end
 

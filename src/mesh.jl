@@ -77,6 +77,14 @@ global coordinates.
     m * (b - oneunit(b)) + oneunit(b)
 end
 
+"""
+Return coordinates of the first cell (e.g. lower left, including ghost cells) in a block as
+global coordinates
+"""
+@inline function global_first(b, m, g)
+    m * (b - oneunit(b)) + oneunit(b) - g * oneunit(b)
+end
+
 
 """
 Return coordinates of the last cell (e.g. upper right) in a block.
@@ -117,5 +125,10 @@ Cell faces in block `b` at level `l` given `m` cells per block.
     high = hl .* m .* Tuple(b)
     
     ntuple(d -> range(low[d], high[d], m + 1), Val(D))
+end
+
+@inline function cell_center(b::CartesianIndex{D}, l, h) where D
+    hl = unitcell(l, h)
+    ntuple(d -> b[d] * hl - hl / 2, Val(D))
 end
 
