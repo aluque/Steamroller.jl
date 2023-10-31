@@ -115,7 +115,7 @@ function _main(;
                refine_min_h=T(3e-6),
 
                # The parameters for the Teunissen refinement criterium
-               refine_teunissen_c0=T(0.5),
+               refine_teunissen_c0=T(1.0),
                refine_teunissen_c1=T(1.2),
                
                # The type of flux scheme
