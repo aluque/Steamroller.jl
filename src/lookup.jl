@@ -4,7 +4,7 @@ struct LookupTable{TX, TY, F, G, GI}
     # X data (f(x)).  Much faster when this is a uniform range
     fx::TX
 
-    # Y daya (g(y)).
+    # Y data (g(y)).  Can be a single column (Vector{<:Real}) or a list of columns (Vector{Vector{<:Real}})
     gy::TY
 
     # The transform function for x
