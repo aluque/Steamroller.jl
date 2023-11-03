@@ -109,6 +109,13 @@ function RateLookup(lookup, fname::String)
     return RateLookup(lookup, index)
 end
 
+function RateLookup(lookup, index::Symbol)
+    i = findfirst(==(index), lookup.colnames)
+    isnothing(i) && throw(ArgumentError("Column $(index) not found in the lookup table"))
+
+    RateLookup(lookup, i)
+end
+
 
 @inline evalk(f::RateLookup, args...; prefetch=nothing) = @inline f.lookup(args..., f.index; prefetch)
 @inline prefetch(f::RateLookup, args...) = prefetch(f.lookup, args...)

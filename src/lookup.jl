@@ -16,14 +16,17 @@ struct LookupTable{TX, TY, F, G, GI}
     # The inverse of g
     ginv::GI
 
-    function LookupTable(fx, gy; f=identity, g=identity, ginv=identity)
+    # Optionally we provide names to the columns in g to facilitate the description
+    colnames::Vector{Symbol}
+    
+    function LookupTable(fx, gy; f=identity, g=identity, ginv=identity, colnames=Symbol[])
         if gy isa Vector{<:Real}
             @assert length(fx) == length(gy)
         else
             @assert all(==(length(fx)), length.(gy))
         end
         
-        new{typeof(fx), typeof(gy), typeof(f), typeof(g), typeof(ginv)}(fx, gy, f, g, ginv)
+        new{typeof(fx), typeof(gy), typeof(f), typeof(g), typeof(ginv)}(fx, gy, f, g, ginv, colnames)
     end        
 end
 
@@ -124,8 +127,10 @@ function loadtable(tbl, T::Type=Float64; resample_into=nothing,
 
         (fx, gy) = (fx1, gy1)
     end
-    
-    LookupTable(fx, gy; f, g, ginv)
+
+    colnames =  ycols isa Vector{Symbol} ? ycols : Symbol[]
+
+    LookupTable(fx, gy; f, g, ginv, colnames)
 end
 
 
@@ -167,3 +172,12 @@ function addcol(tbl::LookupTable, fname; xcol=1, ycol=2)
 end
 
     
+"""
+Return the numerical index of a column in lookup table `lookup`.
+"""
+lookupindex(lookup, i::Int) = i
+function lookupindex(lookup, s::Symbol)
+    i = findfirst(==(s), lookup.colnames)
+    isnothing(i) && throw(ArgumentError("Column $(s) not found in the lookup table"))
+    return i
+end

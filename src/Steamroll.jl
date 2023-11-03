@@ -58,4 +58,6 @@ include("streamer.jl")
 include("initcond.jl")
 include("util.jl")
 
+include("util/lxcat.jl")
+
 end # module

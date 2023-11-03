@@ -83,10 +83,16 @@ end
 """
 A limited 2-species chemistry model derived from a lookup table.
 """
-@kwdef struct NetIonizationLookup{L <: LookupTable} <: AbstractChemistry
+struct NetIonizationLookup{L <: LookupTable} <: AbstractChemistry
     lookup::L
     ionization_index::Int
     attachment_index::Int
+end
+
+function NetIonizationLookup(lookup; ionization_index, attachment_index)
+    NetIonizationLookup(lookup,
+                        lookupindex(lookup, ionization_index),
+                        lookupindex(lookup, attachment_index))
 end
 
 @inline species_charge(::NetIonizationLookup) = @SVector([-1, 1])

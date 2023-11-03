@@ -127,13 +127,25 @@ end
 ########################################
 # Transport model based on swarm data
 ########################################
-@kwdef struct TransportLookup{L <: LookupTable} <: AbstractTransportModel
+struct TransportLookup{L <: LookupTable} <: AbstractTransportModel
     lookup::L
     mobility_index::Int
     diffusion_index::Int
     townsend_index::Int
     townsend_attachment_index::Int
+
+    function TransportLookup(lookup; mobility_index, 
+                             diffusion_index, 
+                             townsend_index, 
+                             townsend_attachment_index)
+        new{typeof(lookup)}(lookup,
+                            lookupindex(lookup, mobility_index), 
+                            lookupindex(lookup, diffusion_index), 
+                            lookupindex(lookup, townsend_index), 
+                            lookupindex(lookup, townsend_attachment_index))
+    end
 end
+
 
 
 @inline mobility(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.mobility_index)
