@@ -139,6 +139,8 @@ function newblock!(sf::StreamerFields)
     newblock!(m, j)
     newblock!(refdelta, j)
 
+    m[j] .= 0
+    
     # When debugging it is useful to initialize everything as NaN to make sure that the initialization
     # values are never used.
     if false
