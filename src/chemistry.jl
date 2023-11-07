@@ -79,6 +79,8 @@ end
 
 @inline species_charge(::NetIonization) = @SVector([-1, 1])
 
+nspecies(::NetIonization) = 2
+
 
 """
 A limited 2-species chemistry model derived from a lookup table.
