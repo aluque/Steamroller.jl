@@ -38,16 +38,38 @@ function main(;kw...)
 end
 
 # Some examples
-function thick(;kw...)
-    initial_conditions = [1 => sr.Background(1e9) + sr.Gaussian(;A=1e19, w=0.1, z0=0.15, extend=-1, s=8),
-                          2 => sr.Background(1e9) + sr.Gaussian(;A=1e19, w=0.1, z0=0.15, extend=-1, s=8)]
+function testfreebc(;kw...)
+    z0 = 0.4
+    L = 0.2
+    A = 1.0e10
+    w = 0.06
     
-    main(;rootsize=(2, 2),
-         L=0.2,
-         refine_density_value=1e18,
-         refine_density_upto=1e-9,
-         initial_conditions,
-         kw...)
+    initial_conditions = [2 => sr.Gaussian(;A, w, z0, s=40) + sr.Background(1.0)]
+    rootsize = (1, 4)
+    H = L * rootsize[2]
+    R = L * rootsize[1]
+
+    z = LinRange(0, H, rootsize[2] * 2^9)
+    u0 = zeros(size(z))
+    k0 = (1/3) * w^3 * A * co.elementary_charge / co.epsilon_0
+    for image in -100000:100000
+        zimg = z0 + image * H
+        #sgn = mod(fld(image, 2), 2) == 0 ? 1 : -1
+        sgn = mod(image, 2) == 0 ? 1 : -1
+        u0 .+= @. sgn * k0 / sqrt((z - zimg)^2 + R^2)
+    end
+    
+    sim = main(;rootsize,
+               eb = @SVector([0.0, 0.0]),
+               L,
+               refine_min_h = L / 8 / 2^2,
+               refine_density_value=1e-9,
+               refine_density_h=32 * 2e-4,
+               refine_density_upto=5e-9,
+               initial_conditions,
+               kw...)
+    
+    return (;NamedTuple(Base.@locals)..., sim...)
 end
 
 
@@ -56,9 +78,10 @@ function malagon(;kw...)
          sr.Gaussian(;A=1e21, w=0.003,  z0=0.05, extend=-1) +
          sr.Gaussian(;A=1e21, w=0.0015, z0=0.061, extend=0))
                          
-    main(;rootsize=(2, 2),
-         L=0.15,
-
+    main(;rootsize=(1, 8),
+         L=0.03,
+         freebnd=true,
+         
          # Background field
          eb = @SVector([0.0, -10e5]),
 
@@ -84,7 +107,7 @@ function malagon(;kw...)
          # Output times
          output=0:5e-9:100e-9,
          save=true,
-         outfolder=expanduser("~/data/steamroll/malagon-04"),
+         outfolder=expanduser("~/data/steamroll/malagon-fbc-01"),
          kw...)
 end
 
@@ -112,6 +135,9 @@ function _main(;
                
                # Absolute maximum level.  This is a hard limit; not very relevant.
                maxlevel = 16,
+               
+               # Use free boundary conditions?
+               freebnd = false,
                
                # Final time
                tend=T(16e-9),
@@ -229,8 +255,8 @@ function _main(;
 
     # Boundary conditions for the Poisson equation
     pbc = (D == 2 ?
-        sr.boundaryconditions(((1, -1), (-1, -1))) :
-        sr.boundaryconditions(((-1, -1), (-1, -1), (-1, -1))))
+           sr.boundaryconditions(((1, -1), (-1, -1))) :
+           sr.boundaryconditions(((-1, -1), (-1, -1), (-1, -1))))
         
 
     # Boundary conditions for the fluids
@@ -247,6 +273,8 @@ function _main(;
                poisson_order == 4 ? sr.BoxStencil{D}() :
                throw(ArgumentError("poisson_order = $poisson_order not allowed")))
 
+    freebcinst = freebnd ? sr.FreeBC{D, M, T}(geom, refine_maxlevel, rootsize, h) : nothing
+    
     ###
     #  DEFINE TRANSPORT AND CHEMICAL MODELS
     ###
@@ -274,7 +302,7 @@ function _main(;
                            sr.AndRef(sr.TimeLimitedRef(zero(T), refine_density_upto, nref), tref))
 
     # Set the streamer configuration
-    conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, trans, fluxschem, chem,
+    conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, trans, fluxschem, chem,
                            phmodel, dens, ref, stencil, dt_safety_factor)
     
     # Start with a full tree up to level 2

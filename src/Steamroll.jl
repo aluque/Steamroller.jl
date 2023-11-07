@@ -19,6 +19,8 @@ using Dates
 using Format
 using Base: @propagate_inbounds
 using Interpolations
+using FFTW
+using SpecialFunctions
 
 const BlockIndex = Int
 
@@ -47,6 +49,7 @@ include("geometry.jl")
 include("laplacian.jl")
 include("helmholtz.jl")
 include("multigrid.jl")
+include("freebc.jl")
 include("gasdensity.jl")
 include("transport.jl")
 include("refinement.jl")

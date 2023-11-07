@@ -214,6 +214,7 @@ struct StreamerConf{T, D,
                     G  <: AbstractGeometry,
                     BC,
                     L  <: LaplacianDiscretization,
+                    FBC <: Union{FreeBC, Nothing},
                     TR <: AbstractTransportModel,
                     F  <: AbstractFluxScheme,
                     CH <: AbstractChemistry,
@@ -239,6 +240,9 @@ struct StreamerConf{T, D,
     "Laplacian discretiation"
     lpl::L
 
+    "Free boundary conditions (or nothing if not applicable)"
+    freebnd::FBC
+    
     "Transport model"
     trans::TR
 
@@ -271,8 +275,7 @@ Compute derivatives starting from densities ni and stores them in dni.
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn, fmgiter=2) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
-    (;eb, pbc, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, pbc, fbc) = conf
-    
+    (;eb, pbc, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
     netcharge!(tree, q, ni, chem)
 
     # This is only needed for higher-order discretization so one can save a bit of time
@@ -283,18 +286,33 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         rhs_level!(q1, q, tree[l], lpl, geom)
         fill_ghost!(q1, l, conn, pbc)
     end
-
+    
     for i in 1:fmgiter
         for l in 1:length(tree)
             fill_ghost!(u, l, conn, pbc)
         end
-
+        
         vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
                 tree, conn, geom, pbc, lpl, nup=2, ndown=2, ntop=4)
         # fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
         #      tree, conn, geom, pbc, lpl, nup=3, ndown=3, ntop=1)
     end
 
+    if !isnothing(freebnd)
+        freebc!(q1, u, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, freebnd)
+
+        for i in 1:fmgiter
+            for l in 1:length(tree)
+                fill_ghost!(u, l, conn, pbc)
+            end
+            
+            vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                    tree, conn, geom, pbc, lpl, nup=2, ndown=2, ntop=4)
+            # fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+            #      tree, conn, geom, pbc, lpl, nup=3, ndown=3, ntop=1)
+        end
+    end
+    
     # The electron density is always first among species.
     ne = ni[1]
     restrict_full!(ne, conn)
@@ -304,11 +322,21 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
 
-        fill_ghost!(u, l, conn, pbc)
+        # In order to apply free b.c. we have to use _copy! and _interp! later.
+        fill_ghost_bnd!(u, conn.boundary[l], pbc)
     end
     
-    electric_field!(tree, e, eabs, u, h, t, eb)
+    if !isnothing(freebnd)
+        fill_ghost_free!(u, freebnd, tree)
+    end
 
+    for l in 1:length(tree)        
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_interp!(u, conn.refboundary[l])
+    end
+
+    electric_field!(tree, e, eabs, u, h, t, eb)
+    
     for l in 1:length(tree)
         fill_ghost!(eabs, l, conn, ExtrapolateConst())
     end
