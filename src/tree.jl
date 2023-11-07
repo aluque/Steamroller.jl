@@ -44,8 +44,6 @@ function populate!(tree, level=length(tree))
 end
 
 
-
-
 """
 Return a range for blocks of all levels contained in the tree
 """
@@ -135,4 +133,22 @@ function mapreduce_tree(f, op, tree::Tree, init=nothing, leafsonly=true)
     end
 
     return x
+end
+
+"""
+Return the finest level with at least one block in the `tree`.
+"""
+finestlevel(tree) = findlast(!isempty, tree)
+
+
+"""
+Find a block by block number. Return (level, coord).
+"""
+function findblock(tree, blk)
+    for l in 1:length(tree)
+        B = get(tree[l].coord, blk, nothing)
+        if !isnothing(B)
+            return (l, B)
+        end
+    end
 end
