@@ -266,6 +266,15 @@ struct StreamerConf{T, D,
     
     "Safety factor below dt limits"
     dt_safety_factor::T
+
+    "Use full multigrid for the Poisson equation?"
+    poisson_fmg::Bool
+
+    "Number of Poisson iterations"
+    poisson_iter::Int
+
+    "(up, down, top) iterations in V cycles in Poisson."
+    poisson_level_iter::NTuple{3, Int}
 end
 
 
@@ -273,9 +282,12 @@ end
 Compute derivatives starting from densities ni and stores them in dni.
 """
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
-                 tree, conn, fmgiter=2) where {T}
+                 tree, conn) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
     (;eb, pbc, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
+    (;poisson_fmg, poisson_iter, poisson_level_iter) = conf
+    (nup, ndown, ntop) = poisson_level_iter
+    
     netcharge!(tree, q, ni, chem)
 
     # This is only needed for higher-order discretization so one can save a bit of time
@@ -287,29 +299,35 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         fill_ghost!(q1, l, conn, pbc)
     end
     
-    for i in 1:fmgiter
+    for i in 1:poisson_iter
         for l in 1:length(tree)
             fill_ghost!(u, l, conn, pbc)
         end
-        
-        vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                tree, conn, geom, pbc, lpl, nup=2, ndown=2, ntop=4)
-        # fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-        #      tree, conn, geom, pbc, lpl, nup=3, ndown=3, ntop=1)
+
+        if poisson_fmg
+            fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                 tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+        else
+            vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                    tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+        end
     end
 
     if !isnothing(freebnd)
         freebc!(q1, u, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, freebnd)
-
-        for i in 1:fmgiter
+        
+        for i in 1:poisson_iter
             for l in 1:length(tree)
                 fill_ghost!(u, l, conn, pbc)
             end
             
-            vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                    tree, conn, geom, pbc, lpl, nup=2, ndown=2, ntop=4)
-            # fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-            #      tree, conn, geom, pbc, lpl, nup=3, ndown=3, ntop=1)
+            if poisson_fmg
+                fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                     tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+            else
+                vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                        tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+            end
         end
     end
     
@@ -369,7 +387,6 @@ Perform a single step of the time integration.
 - `tree`: a `Tree` instance containing the tree.
 - `conn`: connectivity pattern of the tree.
 - `dt`: time step.
-- `fmgiter=1`: number of FMG iterations.
 """
 function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
                t, tmax, ::Val{:ssprk3}) where {T, K}

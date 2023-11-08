@@ -103,6 +103,9 @@ function malagon(;kw...)
          refine_teunissen_c1=1.25,
          refine_persistence=4e-10,
 
+         poisson_fmg=false,
+         poisson_iter=5,
+         
          tend=100e-9,
          # Output times
          output=0:5e-9:100e-9,
@@ -207,6 +210,15 @@ function _main(;
                # The type of flux scheme
                flux_scheme=:koren,
                
+               # Use full multigrid for the Poisson equation?
+               poisson_fmg=false,
+
+               # Number of Poisson iterations
+               poisson_iter=2,
+               
+               # (up, down, top) iterations in V cycles in Poisson.
+               poisson_level_iter=(2, 2, 4),
+
                # Plot the evolution of the streamer?
                plot=false,
                
@@ -303,7 +315,8 @@ function _main(;
 
     # Set the streamer configuration
     conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, trans, fluxschem, chem,
-                           phmodel, dens, ref, stencil, dt_safety_factor)
+                           phmodel, dens, ref, stencil, dt_safety_factor,
+                           poisson_fmg, poisson_iter, poisson_level_iter)
     
     # Start with a full tree up to level 2
     sr.populate!(tree, 2)
