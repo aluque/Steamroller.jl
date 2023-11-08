@@ -115,12 +115,13 @@ end
 """
 Add a block to each field in the `StreamerFields` set of fields.
 """
-function newblock!(sf::StreamerFields)
+function newblock!(sf::StreamerFields, j0=nothing)
     (;n, n1, dn, q, q1, u, u1, r, eabs, e, flux, photo, m, refdelta, flux_same_as_e) = sf
     
     # We obtain the block number of a field and then check that all fields create the same block number
     j = newblock!(q)
-
+    !isnothing(j0) && @assert(j0 == j)
+    
     foreach(i->newblock!(n[i], j), eachindex(n))
     foreach(i->newblock!(n1[i], j), eachindex(n1))
     for dni in dn
@@ -167,9 +168,18 @@ function newblock!(sf::StreamerFields)
     return j
 end
 
-function newblocks!(sf::StreamerFields, nblocks)
+
+# We enable calls to newblocks using tuples. This allows us to pass to refine! something besides
+# the StreamerField.
+newblock!(::Tuple{}, j) = j
+newblock!(t::Tuple, j) = (newblock!(t[1], j); newblock!(Base.tail(t), j))
+newblock!(::Nothing, j) = j
+newblock!(t::Tuple) = (j = newblock!(t[1]); newblock!(Base.tail(t), j))
+
+
+function newblocks!(f, nblocks)
     for i in 1:nblocks
-        newblock!(sf)
+        newblock!(f)
     end
 end
 
@@ -194,6 +204,10 @@ function interp!(sf::StreamerFields, dest, src, sub)
     m[dest] .= 0
 end
 
+interp!(::Nothing, dest, src, sub) = nothing
+interp!(::Tuple{}, dest, src, sub) = nothing
+interp!(t::Tuple, dest, src, sub) = (interp!(t[1], dest, src, sub); interp!(Base.tail(t), dest, src, sub))
+
 
 """
 Restrict all fields that require restriction in `sf`, from block `src` into `dest`, with
@@ -206,6 +220,9 @@ function restrict!(sf::StreamerFields, dest, src, sub)
     end
 end
 
+restrict!(::Nothing, dest, src, sub) = nothing
+restrict!(::Tuple{}, dest, src, sub) = nothing
+restrict!(t::Tuple, dest, src, sub) = (restrict!(t[1], dest, src, sub); restrict!(Base.tail(t), dest, src, sub))
 
 """
 Configuration of a streamer simulation
@@ -214,7 +231,7 @@ struct StreamerConf{T, D,
                     G  <: AbstractGeometry,
                     BC,
                     L  <: LaplacianDiscretization,
-                    FBC <: Union{FreeBC, Nothing},
+                    FBC, # Free b.c.
                     TR <: AbstractTransportModel,
                     F  <: AbstractFluxScheme,
                     CH <: AbstractChemistry,
@@ -284,7 +301,7 @@ Compute derivatives starting from densities ni and stores them in dni.
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
-    (;eb, pbc, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
+    (;eb, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
     (;poisson_fmg, poisson_iter, poisson_level_iter) = conf
     (nup, ndown, ntop) = poisson_level_iter
     
@@ -298,6 +315,10 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         rhs_level!(q1, q, tree[l], lpl, geom)
         fill_ghost!(q1, l, conn, pbc)
     end
+
+    # Either applies free boundary conditions by changing the source q1 or does nothing
+    # if freebnd==nothing.
+    xbc = setfreebc!(freebnd, pbc, fld, conf, tree, conn)
     
     for i in 1:poisson_iter
         for l in 1:length(tree)
@@ -306,28 +327,10 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
 
         if poisson_fmg
             fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                 tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+                 tree, conn, geom, xbc, lpl; nup, ndown, ntop)
         else
             vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                    tree, conn, geom, pbc, lpl; nup, ndown, ntop)
-        end
-    end
-
-    if !isnothing(freebnd)
-        freebc!(q1, u, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, freebnd)
-        
-        for i in 1:poisson_iter
-            for l in 1:length(tree)
-                fill_ghost!(u, l, conn, pbc)
-            end
-            
-            if poisson_fmg
-                fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                     tree, conn, geom, pbc, lpl; nup, ndown, ntop)
-            else
-                vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                        tree, conn, geom, pbc, lpl; nup, ndown, ntop)
-            end
+                    tree, conn, geom, xbc, lpl; nup, ndown, ntop)
         end
     end
     
@@ -335,19 +338,15 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     ne = ni[1]
     restrict_full!(ne, conn)
 
-    for l in 1:length(tree)        
+    for l in 1:length(tree)
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
 
         # In order to apply free b.c. we have to use _copy! and _interp! later.
-        fill_ghost_bnd!(u, conn.boundary[l], pbc)
+        fill_ghost_bnd!(u, conn.boundary[l], xbc)
     end
     
-    if !isnothing(freebnd)
-        fill_ghost_free!(u, freebnd, tree)
-    end
-
     for l in 1:length(tree)        
         fill_ghost_copy!(u, conn.neighbor[l])
         fill_ghost_interp!(u, conn.refboundary[l])
@@ -427,10 +426,10 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
 end
 
 
-function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, dt;
+function refine!(fields::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, dt;
                  minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T, D}
-    (;m, refdelta, n, freeblocks) = fld
-    (;h, fbc) = conf
+    (;m, refdelta, n, freeblocks) = fields
+    (;h, fbc, freebnd) = conf
 
     ref = isnothing(ref) ? conf.ref : ref
 
@@ -444,7 +443,7 @@ function refine!(fld::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, d
         fill_ghost_interp!(ni, conn)
     end
         
-    applydelta!(tree, refdelta, freeblocks, fld, minlevel, maxlevel)
+    applydelta!(tree, refdelta, freeblocks, (fields, freebnd), minlevel, maxlevel)
 end
 
 """

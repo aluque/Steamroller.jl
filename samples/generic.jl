@@ -87,7 +87,7 @@ function malagon(;kw...)
 
          initial_conditions = [1 => f, 2 => f],
 
-         phmodel = sr.bourdon3(Float64),
+         phmodel = sr.empty_photoionization(Float64), #sr.bourdon3(Float64),
 
          #phmodel = sr.bourdon3(Float64),
          clamp_mobility = (0.0, 0.1),
@@ -99,16 +99,16 @@ function malagon(;kw...)
          derefine_max_h=4e-4,
 
          # The parameters for the Teunissen refinement criterium
-         refine_teunissen_c0=0.25,
+         refine_teunissen_c0=1.0,
          refine_teunissen_c1=1.25,
          refine_persistence=4e-10,
 
          poisson_fmg=false,
-         poisson_iter=5,
+         poisson_iter=2,
          
          tend=100e-9,
          # Output times
-         output=0:5e-9:100e-9,
+         output=0:1e-9:100e-9,
          save=true,
          outfolder=expanduser("~/data/steamroll/malagon-fbc-01"),
          kw...)
@@ -284,8 +284,6 @@ function _main(;
     stencil = (poisson_order == 2 ? sr.StarStencil{D}() :
                poisson_order == 4 ? sr.BoxStencil{D}() :
                throw(ArgumentError("poisson_order = $poisson_order not allowed")))
-
-    freebcinst = freebnd ? sr.FreeBC{D, M, T}(geom, refine_maxlevel, rootsize, h) : nothing
     
     ###
     #  DEFINE TRANSPORT AND CHEMICAL MODELS
@@ -298,7 +296,8 @@ function _main(;
     
     # The data struct that contains all streamer fields
     fields = sr.StreamerFields(T, sr.nspecies(chem), length(phmodel), D, M, G, Val(storage))
-
+    freebcinst = freebnd ? sr.FreeBC(geom, fields.u, refine_maxlevel, rootsize, h) : nothing
+    
     ###
     #  REFINEMENT CRITERIUM
     ###
@@ -321,6 +320,7 @@ function _main(;
     # Start with a full tree up to level 2
     sr.populate!(tree, 2)
     sr.newblocks!(fields, sr.nblocks(tree))
+    sr.newblocks!(freebcinst, sr.nblocks(tree))
 
     conn = sr.initial_conditions!(fields, conf, tree, nref, initial_conditions,
                                   minlevel=3, maxlevel=refine_maxlevel)

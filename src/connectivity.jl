@@ -7,6 +7,7 @@ struct Boundary{D}
     block::BlockIndex
     face::CartesianIndex{D}
     bnd::CartesianIndex{D}
+    level::Int
 end
 
 # The block from and to share a face at the same level
@@ -112,7 +113,7 @@ function connectivity!(conn, tree::Tree{D}, stencil) where {D}
                     bnd = CartesianIndex(ntuple(d -> (c[d] + s[d]) in layer.domain.indices[d] ?
                                                 0 : s[d], Val(D)))
                     # Block at the domain boundary
-                    push!(conn, layer.level, Boundary(blk, s, bnd))
+                    push!(conn, layer.level, Boundary(blk, s, bnd, layer.level))
                     continue
                 end
 
@@ -205,19 +206,18 @@ end
 Fill ghost cells in the boundary of a given layer by applying the 
 boundary conditions specified by `bc`
 """
-function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}}, bc) where {D}
+function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}},
+                         bc::HomogeneousBoundaryConditions) where {D}
     @batch for link in v
         ghost = ghostindices(u, link.face)
         valid = mirrorghost(u, ghost, link.bnd)
         
         ublk = u[link.block]
         CI = CartesianIndices(ghost)
-        # This is wrong for corners not in the domain corners.
-        s = getbc(bc, link.bnd)
         
         for I in CI
             # I1 = __mirrorindex(I, CI, link.bnd)
-            ublk[ghost[I]] = s * ublk[valid[I]]
+            ublk[ghost[I]] = getbc(bc, link.bnd, ublk[valid[I]])
         end
     end
 end

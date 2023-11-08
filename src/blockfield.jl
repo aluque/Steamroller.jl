@@ -136,6 +136,9 @@ const _ScalarBlockFieldA{D, M, G, T, N, A} = ScalarBlockField{D, M, G, T, N, A} 
 const _VectorBlockFieldV{D, M, G, T, N, A} = VectorBlockField{D, M, G, T, N, A} where {A <: Vector{<:MArray}}
 const _VectorBlockFieldA{D, M, G, T, N, A} = VectorBlockField{D, M, G, T, N, A} where {A <: ElasticArray}
 
+storage(::Union{_ScalarBlockFieldV, _VectorBlockFieldV}) = Val{:vector}()
+storage(::Union{_ScalarBlockFieldA, _VectorBlockFieldA}) = Val{:contiguous}()
+
 dimension(::AbstractBlockField{D}) where {D} = D
 
 _length(u::ElasticArray) = size(u, ndims(u))

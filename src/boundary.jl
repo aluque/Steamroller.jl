@@ -1,15 +1,24 @@
 #=
-  Boundary conditions are represented by a 3x3 or 3x3x3 StaticArray.  
+Homogeneous boundary conditions are represented by a 3x3 or 3x3x3 StaticArray.  
 
-  Each element stores +1/-1 for Neumann / Dirchlet b.c.; the center element
-  is ignored.
+Each element stores +1/-1 for Neumann / Dirchlet b.c.; the center element
+is ignored.
+
+The support for inhomogeneous boundary conditions is currently limited to its use in freebc.jl.
 =#
+
+abstract type HomogeneousBoundaryConditions; end
+
+struct GeneralHomogeneousBoundaryConditions{D} <: HomogeneousBoundaryConditions
+    a::SArray{NTuple{D, 3}, Int8}
+end
+
 
 """
 A boundary condition that just extrapolates the value in all boundaries.  This is used e.g.
 for the eabs field.
 """
-struct ExtrapolateConst; end
+struct ExtrapolateConst <: HomogeneousBoundaryConditions; end
 
 """
 Builds an efficient boundary condition representation from a list of D
@@ -25,14 +34,16 @@ function boundaryconditions(desc::NTuple{D, Tuple{Int, Int}}) where D
         a[rinds] .*= r        
     end        
 
-    return SArray{NTuple{D, 3}, Int8}(a)
+    return GeneralHomogeneousBoundaryConditions(SArray{NTuple{D, 3}, Int8}(a))
 end
 
-
-function getbc(bc::SArray{NTuple{D, 3}, Int8}, face::CartesianIndex{D}) where D
-    return bc[ntuple(d -> 2 + face[d], Val(D))...] 
+"""
+Returns the value of the ghost cell u[n+1] beyond the domain baoundary given the boundary conditions
+`bc`, the face (a vector in {0, 1}^D perpendicular to the boundary) and the value u[n] of the cell closest
+to the face.
+"""
+function getbc(bc::GeneralHomogeneousBoundaryConditions{D}, face::CartesianIndex{D}, uclose) where D
+    return bc.a[ntuple(d -> 2 + face[d], Val(D))...] * uclose 
 end
 
-function getbc(::ExtrapolateConst, face)
-    return 1
-end
+getbc(::ExtrapolateConst, face, uclose) = uclose

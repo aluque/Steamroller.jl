@@ -4,8 +4,13 @@ Implementation of free boundary conditions following Malagon-Romero 2018
 Only implemented for cylindrical coordinates.
 =#
 
-struct FreeBC{D, M, T, GT, P10, P01}
+struct FreeBC{D, M, T, S <: ScalarBlockField, GT, P10, P01}
     geom::GT
+
+    # homogeneous electrostatic Potential
+    # we allocate and handle a separate field for this because it is inefficient to alternate
+    # between Poisson solutions as we lose information on the previous timestep.
+    uh::S
 
     # Domain dimensions
     H::T
@@ -23,7 +28,8 @@ struct FreeBC{D, M, T, GT, P10, P01}
     rodft10::P10
     rodft01::P01
     
-    function FreeBC{D, M, T}(geom::CylindricalGeometry{dim}, level, rootsize, h) where {dim, D, M, T}
+    function FreeBC(geom::CylindricalGeometry{dim}, u::ScalarBlockField{D, M, G, T},
+                    level, rootsize, h) where {dim, D, M, G, T}
         otherdim = mod1(dim + 1, D)
         n = rootsize[otherdim] * 2^(level - 1) * M
 
@@ -34,18 +40,57 @@ struct FreeBC{D, M, T, GT, P10, P01}
         x = k .* R
         f = @. (2 / H) / (k * (besselix(1, x) / besselix(0, x) +
                                besselkx(1, x) / besselkx(0, x)))
-
+        uh = ScalarBlockField{D, M, G, T}(storage(u))
+        
         rodft10 = FFTW.plan_r2r!(f, FFTW.RODFT10)
         rodft01 = FFTW.plan_r2r!(f, FFTW.RODFT01)
         
-        new{D, M, T, typeof(geom), typeof(rodft10), typeof(rodft01)}(geom, H, R, level,
-                                                                     zeros(n),
-                                                                     zeros(n),
-                                                                     zeros(n), f, rodft10, rodft01)
+        new{D, M, T, typeof(uh), typeof(geom), typeof(rodft10), typeof(rodft01)}(geom, uh, H, R, level,
+                                                                                 zeros(n),
+                                                                                 zeros(n),
+                                                                                 zeros(n),
+                                                                                 f, rodft10, rodft01)
     end
 end
 
-_perpdim(::FreeBC{D, M, T, CylindricalGeometry{dim}}) where {dim, D, M, T} = dim
+
+struct FreeBoundaryConditions{T, dim, H <: HomogeneousBoundaryConditions, TR}
+    level::Int
+    b::Vector{T}
+    hom::H
+    tree::TR
+end
+
+
+_perpdim(::FreeBC{D, M, T, S, CylindricalGeometry{dim}}) where {dim, D, M, T, S} = dim
+
+function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::StreamerConf{T},
+                   tree, conn) where T
+    (;uh) = fr
+    (;q, q1, r, q, u, u1) = strfields
+    (;pbc, h, geom, lpl, poisson_fmg, poisson_iter, poisson_level_iter) = strconf
+    (nup, ndown, ntop) = poisson_level_iter
+    dim = _perpdim(fr)
+    
+    for i in 1:poisson_iter
+        for l in 1:length(tree)
+            fill_ghost!(uh, l, conn, pbc)
+        end
+
+        if poisson_fmg
+            fmg!(uh, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                 tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+        else
+            vcycle!(uh, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
+                    tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+        end
+    end
+
+    freebc!(q1, uh, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, fr)
+    return FreeBoundaryConditions{T, dim, typeof(pbc), typeof(tree)}(fr.level, fr.b, pbc, tree)
+end
+
+setfreebc!(::Nothing, pbc, strfields, strconf, tree, conn) = pbc
 
 function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, s, 
                  tree, conf::FreeBC{D}) where {D, M, G}
@@ -62,17 +107,13 @@ function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, 
 
     getouter!(u1, u, tree, dim, level, h)
 
-    # Do the meaty stuff
-    
     mul!(u1, rodft10, u1)
-    am[end] *= 3
-    @. am = f * u1
-    
     # This is to make it compatible with the r2r definition of FFTW
+    am[end] *= 3
+    @. am = f * u1    
     
     mul!(am, rodft01, am)
     @. b = am * h / 2^(level - 1) / 2
-    setouter!(q, b, tree, dim, level, s, geom)
 end
 
 
@@ -140,8 +181,6 @@ function setouter!(q::ScalarBlockField{D, M, G}, b, tree, dim, level, s, geom) w
 end
 
 
-"""
-"""
 function fill_ghost_free!(u::ScalarBlockField{D, M, G}, conf::FreeBC{D}, tree) where {D, M, G}
     (;geom, level, b) = conf
     dim = _perpdim(conf)    
@@ -168,3 +207,49 @@ function fill_ghost_free!(u::ScalarBlockField{D, M, G}, conf::FreeBC{D}, tree) w
     end
 end
     
+function newblock!(f::FreeBC, j0=nothing)
+    (;uh) = f
+    j = newblock!(uh)
+    uh[j] .= 0
+    !isnothing(j0) && @assert(j0 == j)
+end
+
+function interp!(f::FreeBC, dest, src, sub)
+    (;uh) = f
+    interp!(uh[dest], validindices(uh), uh[src], subblockindices(uh, sub))
+end
+
+restrict!(f::FreeBC, dest, src, sub) = nothing
+
+
+"""
+Fill ghost cells in the boundary of a given layer by applying the 
+boundary conditions specified by `bc`
+"""
+function fill_ghost_bnd!(u::ScalarBlockField{D, M, G, T}, v::Vector{Boundary{D}},
+                         bc::FreeBoundaryConditions{T, dim}) where {D, M, G, T, dim}
+    (;b, level, hom, tree) = bc
+    otherdim = mod1(dim + 1, D)
+
+    # First set the homogeneous b.c.
+    fill_ghost_bnd!(u, v, hom)
+    face0 = Base.setindex(zero(CartesianIndex{D}()), 1, dim)
+    #@batch
+    for link in v
+        face0 == link.face || continue
+        l = link.level
+        
+        B = tree[l].coord[link.block]
+        iblk = B[otherdim]
+        i0 = (iblk - 1) * M
+        
+        p = 2^(level - l)
+        for i in 1:M
+            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
+            I1 = Base.setindex(I, I[dim], dim)
+            
+            bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
+            u[I1, link.block] += 2 * bmean
+        end
+    end
+end
