@@ -99,12 +99,13 @@ function malagon(;kw...)
          derefine_max_h=4e-4,
 
          # The parameters for the Teunissen refinement criterium
-         refine_teunissen_c0=1.0,
-         refine_teunissen_c1=1.25,
-         refine_persistence=4e-10,
+         refine_teunissen_c0=0.8,
+         refine_teunissen_c1=1.35,
+         refine_persistence=1e-9,
 
          poisson_fmg=false,
-         poisson_iter=2,
+         poisson_iter=3,
+         poisson_level_iter=(4, 4, 4),
          
          tend=100e-9,
          # Output times
