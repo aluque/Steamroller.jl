@@ -246,10 +246,9 @@ function fill_ghost_bnd!(u::ScalarBlockField{D, M, G, T}, v::Vector{Boundary{D}}
         p = 2^(level - l)
         for i in 1:M
             I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
-            I1 = Base.setindex(I, I[dim], dim)
             
             bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
-            u[I1, link.block] += 2 * bmean
+            u[I, link.block] += 2 * bmean
         end
     end
 end

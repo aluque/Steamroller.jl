@@ -339,19 +339,12 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     restrict_full!(ne, conn)
 
     for l in 1:length(tree)
+        fill_ghost!(u, l, conn, xbc)
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
-
-        # In order to apply free b.c. we have to use _copy! and _interp! later.
-        fill_ghost_bnd!(u, conn.boundary[l], xbc)
     end
     
-    for l in 1:length(tree)        
-        fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_interp!(u, conn.refboundary[l])
-    end
-
     electric_field!(tree, e, eabs, u, h, t, eb)
     
     for l in 1:length(tree)
