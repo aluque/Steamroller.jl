@@ -354,28 +354,36 @@ function _main(;
         # This gc here seems to prevent a nasty segfault bug in PyCall/PyPlot
         GC.gc()
     end
-    isave = 0
 
-    function _save(t)
-        fname = joinpath(outfolder, format("{:05d}.jld2", isave))
-        isave += 1
+    isave = 0
+    function _save(t, label=nothing)
+        if isnothing(label)
+            label = format("{:05d}", isave)
+            isave += 1
+        end
+        fname = joinpath(outfolder, label * ".jld2")
         jldsave(fname, true; fields, conf, tree, conn, t)
         @info "snapshot created" fname
     end
-
+    _save_err(t) = _save(t, "error")
+    
     output_callbacks = (_report,)
+    onerror = ()
+
     if plot
         output_callbacks = (output_callbacks..., _plot)
     end
 
     if save
         output_callbacks = (output_callbacks..., _save)
+        onerror = (onerror..., _save_err,)
     end
+
     
     sr.run!(fields, conf, tree, conn, tend; progress_every=10, output,
             derefine_minlevel,
             refine_maxlevel,
-            output_callbacks)
+            output_callbacks, onerror)
 
     return NamedTuple(Base.@locals)
 end

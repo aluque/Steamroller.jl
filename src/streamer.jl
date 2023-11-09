@@ -498,9 +498,12 @@ end
 """
 Execute the full streamer simulation.
 """
-function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, output=[],
+function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
+              min_dt=1e-16, output=[],
               derefine_minlevel=3, refine_maxlevel=10,
-              refine_every=2, progress_every=50, output_callbacks=[]) where {T}
+              refine_every=2, progress_every=50,
+              output_callbacks=(),
+              onerror=()) where {T}
     (;stencil, h) = conf
     output = map(x->convert(T, x), output)
 
@@ -528,36 +531,43 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend; min_dt=1e-16, o
                                         :elapsed_connectivity => elapsed_connectivity]), "\n")
 
     @withprogress begin
-        while t < tend            
-            elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t,
-                                                     get(output, 1, convert(T, Inf)),
-                                                     Val(:ssprk3))
-
-            if t > 0 && dt < min_dt
-                @warn "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
-                break
+        try
+            while t < tend            
+                elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t,
+                                                         get(output, 1, convert(T, Inf)),
+                                                         Val(:ssprk3))
+                
+                if t > 0 && dt < min_dt
+                    @error "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
+                    throw(ErrorException())
+                end
+                
+                if !isempty(output) && isapprox(t, first(output))
+                    _run_callbacks(output_callbacks, t)
+                    popfirst!(output)
+                end
+                
+                if (iter % refine_every) == 0
+                    elapsed_refine += @elapsed refine!(fields, conf, tree, conn, t, dt;
+                                                       minlevel=derefine_minlevel, maxlevel=refine_maxlevel)
+                    elapsed_connectivity += @elapsed connectivity!(conn, tree, stencil)
+                end
+                
+                
+                if (iter % progress_every) == 0
+                    @logprogress iter * dt / (iter * dt + tend - t) #(t / tend)
+                    msg = _msg()
+                    #percent = format("{:.1f}", 100 * t / tend)
+                    @info "\n```\n$msg\n```" sticky=true _id=:report
+                end
+                
+                iter += 1
             end
-
-            if !isempty(output) && isapprox(t, first(output))
-                _run_callbacks(output_callbacks, t)
-                popfirst!(output)
+        catch e
+            if !isempty(onerror)
+                _run_callbacks(onerror, t)
             end
-
-            if (iter % refine_every) == 0
-                elapsed_refine += @elapsed refine!(fields, conf, tree, conn, t, dt;
-                                                   minlevel=derefine_minlevel, maxlevel=refine_maxlevel)
-                elapsed_connectivity += @elapsed connectivity!(conn, tree, stencil)
-            end
-
-
-            if (iter % progress_every) == 0
-                @logprogress iter * dt / (iter * dt + tend - t) #(t / tend)
-                msg = _msg()
-                #percent = format("{:.1f}", 100 * t / tend)
-                @info "\n```\n$msg\n```" sticky=true _id=:report
-            end
-            
-            iter += 1
+            rethrow(e)
         end
     end
 
