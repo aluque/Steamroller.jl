@@ -102,7 +102,7 @@ Compute electron fluxes.
                         ne::ScalarBlockField{D, M, G},
                         e::VectorBlockField{D, M, G},
                         eabs::ScalarBlockField{D, M, G},
-                        h, trans, maxdt) where {D, M, G}
+                        h, trans, dens, maxdt) where {D, M, G}
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     @assert G > 2
@@ -112,12 +112,14 @@ Compute electron fluxes.
         for I in validindices(e, d)
             # Compute flux between I and I1, which is 1 cell lower in the d dimension.
             I1 = Base.setindex(I, I[d] - 1, d)
+            x = ntuple(d1 -> h * (gbl0[d1] + I[d1] - G - 1) - (d == d1 ? h : h / 2), Val(D))
+            theta = nscale(dens, x)
                         
             ed = e[I, d, blk]
 
             eabs1 = (eabs[I, blk] + eabs[I1, blk]) / 2
-            μ = mobility(trans, eabs1)
-            diff = diffusion(trans, eabs1)
+            μ = mobility(trans, eabs1 / theta) / theta
+            diff = diffusion(trans, eabs1 / theta) / theta
             
             v = -ed * μ
             sv = signbit(v) ? -1 : 1
