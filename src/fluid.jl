@@ -51,6 +51,7 @@ Compute electron fluxes.
 
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
+    maxdt[blk] = Inf
     
     for d in 1:D
         for I in validindices(e, d)
@@ -84,7 +85,8 @@ Compute electron fluxes.
             flux[I, d, blk] = F
 
             # Compute max dt from CFL, diffusion and Maxwell relaxation)
-            maxdt[blk] = min(h / abs(v),
+            maxdt[blk] = min(maxdt[blk],
+                             h / abs(v),
                              h^2 / diff / 4,
                              tmaxwell)
         end
@@ -104,6 +106,7 @@ Compute electron fluxes.
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     @assert G > 2
+    maxdt[blk] = Inf
     
     for d in 1:D
         for I in validindices(e, d)
@@ -148,14 +151,18 @@ Compute electron fluxes.
             
             F = v * uhalf
             
+            # Consider only the advective flux for the computation of the Maxwell relax time
+            tmaxwell = (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
+
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h
             flux[I, d, blk] = F
 
             # Compute max dt from CFL, diffusion and Maxwell relaxation)
-            maxdt[blk] = min(h / abs(v),
+            maxdt[blk] = min(maxdt[blk],
+                             h / abs(v),
                              h^2 / diff / 4,
-                             (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F))
+                             tmaxwell)
         end
     end    
 end
