@@ -1,3 +1,11 @@
+#=
+Discretizations of the Laplacian operator.
+
+Note: All functions here receive a parameter s that is ignored. This is needed only for the
+Helmholtz discretizations in helmholtz.jl but must be included here share the same code in the
+multigrid solver.
+=#
+
 abstract type AbstractDiscretization{D, P}; end
 """
 Represent a Laplacian discretization in dimension D and order P.
