@@ -185,6 +185,10 @@ function _main(;
                # How many iterations between each recomputing the mesh?
                refine_every=2,
                
+               # If not nothing, ignore the other refinement parameters and use this as
+               # refinement crit.
+               refinement = nothing,
+
                # To improve refinement in the inside of the space-charge layer we let the refinement
                # stay for a while.  This is this persistence time, in seconds.
                refine_persistence=T(2e-10),
@@ -239,7 +243,9 @@ function _main(;
                #  :contiguous is reasonably fast
                #  :vector can be faster for 3d computations but compilation may also be very long
                #   (hours perhaps).
-               # Use :contiguous unless you expect your simulation to lasts very long (from several hours).
+               # Use :contiguous unless you expect your simulation to lasts very long
+               # (from several hours). But note also that with :vector M cannot be too large or
+               # you will die waiting for compilation.
                storage=:contiguous,
                
                # Order of the poisson equation (2 and 4 are allowed).
@@ -302,17 +308,24 @@ function _main(;
     ###
     #  REFINEMENT CRITERIUM
     ###
-    # The Teunissen refinement criterium based on the electric field
-    tref = sr.TeunissenRef(fields.eabs, trans, refine_teunissen_c0, refine_teunissen_c1)
+    if isnothing(refinement)
+        # The Teunissen refinement criterium based on the electric field
+        tref = sr.TeunissenRef(fields.eabs, trans, refine_teunissen_c0, refine_teunissen_c1)
     
-    # A refinement creiterium based on the density of some species (here ions)    
-    nref = sr.DensityRef(fields.n[2], refine_density_value, refine_density_h)
+        # A refinement creiterium based on the density of some species (here ions)    
+        nref = sr.DensityRef(fields.n[2], refine_density_value, refine_density_h)
+        
+        # We combine the previous criteria for a final one, including a persistence and
+        # a time-limited version of the initial criterium.
+        ref = sr.PersistingRef(refine_persistence,
+                               sr.AndRef(sr.TimeLimitedRef(zero(T), refine_density_upto, nref),
+                                         tref))
 
-    # We combine the previous criteria for a final one, including a persistence and a time-limited
-    # version of the initial criterium.
-    ref = sr.PersistingRef(refine_persistence,
-                           sr.AndRef(sr.TimeLimitedRef(zero(T), refine_density_upto, nref), tref))
-
+    else
+        ref = refinement
+        nref = refinement
+    end
+    
     # Set the streamer configuration
     conf = sr.StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, trans, fluxschem, chem,
                            phmodel, dens, ref, stencil, dt_safety_factor,
