@@ -564,6 +564,9 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 iter += 1
             end
         catch e
+            empty!(Logging.current_logger().sticky_messages)
+            msg = _msg()
+            @error "An error occurred within the simulation (see stacktrace)\n```\n$msg\n```"
             if !isempty(onerror)
                 _run_callbacks(onerror, t)
             end
