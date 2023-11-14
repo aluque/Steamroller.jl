@@ -148,17 +148,25 @@ function connectivity!(conn, tree::Tree{D}, stencil) where {D}
     return conn
 end
 
-
-function fill_ghost!(u, l, conn, bc)
+"""
+Fill all ghosts in field `u` at level `l` using connectivity `conn` and boundary conditions `bc`.
+`inhom` sets whether to apply inhomogeneous boundary conditions (if allowed by `bc`).
+"""
+function fill_ghost!(u, l, conn, bc, inhom=false)
     fill_ghost_copy!(u, conn.neighbor[l])
-    fill_ghost_bnd!(u, conn.boundary[l], bc)
+    fill_ghost_bnd!(u, conn.boundary[l], bc, inhom)
     fill_ghost_interp!(u, conn.refboundary[l])
 end
 
 
-function fill_ghost_conserv!(u, l, conn, bc)
+"""
+Conservatively fill all ghosts in field `u` at level `l` using connectivity `conn` and 
+boundary conditions `bc`. `inhom` sets whether to apply inhomogeneous boundary conditions 
+(if allowed by `bc`).
+"""
+function fill_ghost_conserv!(u, l, conn, bc, inhom=false)
     fill_ghost_copy!(u, conn.neighbor[l])
-    fill_ghost_bnd!(u, conn.boundary[l], bc)
+    fill_ghost_bnd!(u, conn.boundary[l], bc, inhom)
     fill_ghost_conserv!(u, conn.refboundary[l])
 end
 
@@ -207,7 +215,7 @@ Fill ghost cells in the boundary of a given layer by applying the
 boundary conditions specified by `bc`
 """
 function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}},
-                         bc::HomogeneousBoundaryConditions) where {D}
+                         bc::HomogeneousBoundaryConditions, inhom=false; leavesonly=true) where {D}
     @batch for link in v
         ghost = ghostindices(u, link.face)
         valid = mirrorghost(u, ghost, link.bnd)
@@ -228,7 +236,7 @@ Fill ghost cells in boundary blocks according to given boundary conditions
 `bc`.
 structure `conn`.
 """
-function fill_ghost_bnd!(u::ScalarBlockField, conn::Connectivity, bc)
+function fill_ghost_bnd!(u::ScalarBlockField, conn::Connectivity, bc, inhom=false)
     # For each layer...
     for v in conn.boundary
         fill_ghost_bnd!(u, v, bc)

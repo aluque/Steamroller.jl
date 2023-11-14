@@ -339,7 +339,10 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     restrict_full!(ne, conn)
 
     for l in 1:length(tree)
-        fill_ghost!(u, l, conn, xbc)
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_bnd!(u, conn.boundary[l], xbc, true; leavesonly=false)
+        fill_ghost_interp!(u, conn.refboundary[l])
+
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())

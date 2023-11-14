@@ -22,13 +22,13 @@ function fmg!(u, b, r, u1, s,
     for l in lmax:-1:2
         sl = s / (1 << (l - 1))^2
         restrict_level!(u, conn.child[l])
-        fill_ghost!(u, l - 1, conn, bc)
+        fill_ghost!(u, l - 1, conn, bc, true)
         
         residual_level!(r, u, b, sl, tree[l], lpldisc, geometry)
-        fill_ghost!(r, l, conn, bc)
+        fill_ghost!(r, l, conn, bc, false)
         
         restrict_level!(r, conn.child[l])
-        fill_ghost!(r, l - 1, conn, bc)
+        fill_ghost!(r, l - 1, conn, bc, false)
         
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)
@@ -39,11 +39,11 @@ function fmg!(u, b, r, u1, s,
 
         if l > 1
             diffto!(u1, u, u1, tree[l - 1])            
-            fill_ghost!(u1, l - 1, conn, bc)        
+            fill_ghost!(u1, l - 1, conn, bc, false)        
             interp_add_level!(u, u1, conn.child[l])            
         end
         
-        fill_ghost!(u, l, conn, bc)
+        fill_ghost!(u, l, conn, bc, true)
 
         vcycle!(u, b, r, u1, s, tree, conn, geometry, bc, lpldisc; lmax=l,
                ndown, ntop, nup, ω)
@@ -72,15 +72,15 @@ function vcycle!(u, b, r, u1, s,
         # `child` stores parent-child relations at the level of the child
         # so this restricts to level l - 1.
         restrict_level!(u, conn.child[l])
-        fill_ghost!(u, l - 1, conn, bc)
+        fill_ghost!(u, l - 1, conn, bc, true)
         
         copyto!(u1, u, tree[l - 1])
 
         residual_level!(r, u, b, sl, tree[l], lpldisc, geometry)
-        fill_ghost!(r, l, conn, bc)
+        fill_ghost!(r, l, conn, bc, false)
 
         restrict_level!(r, conn.child[l])
-        fill_ghost!(r, l - 1, conn, bc)
+        fill_ghost!(r, l - 1, conn, bc, false)
         
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)        
@@ -94,14 +94,14 @@ function vcycle!(u, b, r, u1, s,
 
         diffto!(u1, u, u1, tree[l - 1])
 
-        fill_ghost!(u1, l - 1, conn, bc)
+        fill_ghost!(u1, l - 1, conn, bc, false)
 
         interp_add_level!(u, u1, conn.child[l])
-        fill_ghost!(u, l, conn, bc)
+        fill_ghost!(u, l, conn, bc, true)
 
         gauss_seidel_iter!(u, b, ω, sl, nup, l, tree, conn, geometry, bc, lpldisc)
 
-        fill_ghost!(u, l, conn, bc)
+        fill_ghost!(u, l, conn, bc, true)
     end
 end
 
@@ -254,13 +254,13 @@ function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
                             lpldisc, geometry, RedBlack{0}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], bc)
+        fill_ghost_bnd!(u, conn.boundary[l], bc, true)
         
         gauss_seidel_level!(u, b, ω, s, tree[l],
                             lpldisc, geometry, RedBlack{1}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], bc)            
+        fill_ghost_bnd!(u, conn.boundary[l], bc, true)
     end
 end
 
@@ -272,25 +272,25 @@ function gauss_seidel_iter!(u, b, ω, s, n, l, tree, conn, geometry, bc,
                             lpldisc, geometry, FourColors{0, 0}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], bc)
+        fill_ghost_bnd!(u, conn.boundary[l], bc, true)
         
         gauss_seidel_level!(u, b, ω, s, tree[l],
                             lpldisc, geometry, FourColors{0, 1}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], bc)            
+        fill_ghost_bnd!(u, conn.boundary[l], bc, true)
 
         gauss_seidel_level!(u, b, ω, s, tree[l],
                             lpldisc, geometry, FourColors{1, 0}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], bc)            
+        fill_ghost_bnd!(u, conn.boundary[l], bc, true)
 
         gauss_seidel_level!(u, b, ω, s, tree[l],
                             lpldisc, geometry, FourColors{1, 1}())
         
         fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], bc)        
+        fill_ghost_bnd!(u, conn.boundary[l], bc, true)
     end
 end
 

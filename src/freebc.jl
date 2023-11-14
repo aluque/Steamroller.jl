@@ -227,12 +227,16 @@ Fill ghost cells in the boundary of a given layer by applying the
 boundary conditions specified by `bc`
 """
 function fill_ghost_bnd!(u::ScalarBlockField{D, M, G, T}, v::Vector{Boundary{D}},
-                         bc::FreeBoundaryConditions{T, dim}) where {D, M, G, T, dim}
+                         bc::FreeBoundaryConditions{T, dim}, inhom=false;
+                         leavesonly=true) where {D, M, G, T, dim}
     (;b, level, hom, tree) = bc
     otherdim = mod1(dim + 1, D)
 
     # First set the homogeneous b.c.
-    fill_ghost_bnd!(u, v, hom)
+    fill_ghost_bnd!(u, v, hom, false)
+
+    inhom || return nothing
+
     face0 = Base.setindex(zero(CartesianIndex{D}()), 1, dim)
     #@batch
     for link in v
@@ -240,15 +244,25 @@ function fill_ghost_bnd!(u::ScalarBlockField{D, M, G, T}, v::Vector{Boundary{D}}
         l = link.level
         
         B = tree[l].coord[link.block]
+
+        # The inhomogeneous boundary is applied only on leaf nodes; other nodes solve for the
+        # correction, which is has homogeneous boundary.
+        (!leavesonly || isleaf(tree, l, B)) || continue
+        
         iblk = B[otherdim]
         i0 = (iblk - 1) * M
         
         p = 2^(level - l)
-        for i in 1:M
-            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
+        for i in 1:(M + 2G)
+            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : i, Val(D)))
+
+            # Cells outside the boundaries are not corrected
+            (i0 + i - 1 - G) >= 0 && p * (i0 + i - G) <= length(b) || continue
             
-            bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
+            bmean = sum(@view b[p * (i0 + i - 1 - G) + 1: p * (i0 + i - G)]) / p
             u[I, link.block] += 2 * bmean
         end
     end
+
+    return nothing
 end
