@@ -497,7 +497,7 @@ function gaussian(a, x, y, z, x0, y0, z0, w)
     return a * exp(-((x - x0)^2 + (y - y0)^2 + (z - z0)^2) / w^2)
 end
 
-                        end
+end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     #Generic.main()
