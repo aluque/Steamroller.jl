@@ -75,8 +75,8 @@ end
 
 function malagon(;kw...)
     f = (sr.Background(1.0e15) +
-         sr.Gaussian(;A=1e21, w=0.003,  z0=0.05, extend=-1) +
-         sr.Gaussian(;A=1e21, w=0.0015, z0=0.061, extend=0))
+         sr.Gaussian(;A=1e21, w=0.003 * sqrt(2),  z0=0.05, extend=-1) +
+         sr.Gaussian(;A=1e21, w=0.0015 * sqrt(2), z0=0.061, extend=0))
                          
     main(;rootsize=(1, 8),
          L=0.03,
