@@ -101,13 +101,13 @@ function malagon(;kw...)
          # The parameters for the Teunissen refinement criterium
          refine_teunissen_c0=0.8,
          refine_teunissen_c1=1.35,
+
          refine_persistence=1e-9,
 
          poisson_fmg=false,
          poisson_iter=3,
          poisson_level_iter=(4, 4, 4),
          
-         tend=100e-9,
          # Output times
          output=0:1e-9:100e-9,
          save=true,
@@ -142,10 +142,7 @@ function _main(;
                
                # Use free boundary conditions?
                freebnd = false,
-               
-               # Final time
-               tend=T(16e-9),
-               
+                              
                # Initial conditions for electrons and ions
                N0_e  = 5e18,       # Peak of the gaussian ion density
                σ_e   = 4e-4,       # Width of the gaussian
@@ -239,6 +236,9 @@ function _main(;
                # Output times
                output=0:1e-9:16e-9,
                
+               # Final time
+               tend=output[end],
+
                # Approximate velocity of the streamer (only for comparison with Bagheri 2018 data)
                v=0.05e7,
                
