@@ -60,7 +60,6 @@ function compatible(ref::DirThresholdRef{Dir, M, T}, (lvl, coord, blk), I, h, t)
 end
 
 
-
 """
 A refinement criterium based on density.  We must refine if, when the density
 is larger than nemax the grid size is larger than hmax. 
@@ -98,6 +97,33 @@ function compatible(ref::TeunissenRef, (lvl, coord, blk), I, h, t)
     maxh = c0 * c1 / (townsend(transport, c1 * eabs[I1, blk] / theta) * theta)
     return h < maxh
 end
+
+
+"""
+A refinement creiterium based on the value of the laplacian applied to a given field.
+Strictly, we compare Lu/u with a fixed threshold alpha, where L is the discrete laplacian operator with
+h=1.
+"""
+struct LaplacianRef{T, SBF <: ScalarBlockField, GEOM <: AbstractGeometry, L <: LaplacianDiscretization}
+    alpha::T
+    field::SBF
+    lpl::L    
+    geom::GEOM
+end
+
+function compatible(ref::LaplacianRef, (lvl, coord, blk), I, h, t)
+    (;alpha, field, lpl, geom) = ref
+    M = sidelength(field)
+    J = global_first(coord, M)
+    I1 = addghost(field, I)
+    c = applystencil(field[blk], 0.0, I1, J, lpl, geom, Val{:lhs}()) / field[I1, blk]
+    # if abs(c) > 0.1 && lvl > 4
+    #     @show c alpha lvl coord I
+    # end
+    
+    return abs(c) < alpha
+end
+
 
 """
 A refinement criterium that combines two criteria in an "and" relationship, i.e. a cell

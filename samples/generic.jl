@@ -212,6 +212,9 @@ function _main(;
                refine_teunissen_c0=T(0.5),
                refine_teunissen_c1=T(1.2),
                
+               # A refinement criterium based on the laplacian.
+               refine_laplacian_alpha=nothing,
+               
                # The type of flux scheme
                flux_scheme=:koren,
                
@@ -312,6 +315,11 @@ function _main(;
         # The Teunissen refinement criterium based on the electric field
         tref = sr.TeunissenRef(fields.eabs, trans, refine_teunissen_c0, refine_teunissen_c1)
     
+        if !isnothing(refine_laplacian_alpha)
+            tref = sr.AndRef(tref, sr.LaplacianRef(refine_laplacian_alpha, fields.n[1],
+                                                   lpl, geom))
+        end
+
         # A refinement creiterium based on the density of some species (here ions)    
         nref = sr.DensityRef(fields.n[2], refine_density_value, refine_density_h)
         
