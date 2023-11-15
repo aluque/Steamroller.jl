@@ -386,7 +386,7 @@ Perform a single step of the time integration.
 function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
                t, tmax, ::Val{:ssprk3}) where {T, K}
     (;dn, n, n1, maxdt) = fld
-    (;dt_safety_factor) = conf
+    (;dt_safety_factor, fbc) = conf
 
     maxdt .= typemax(eltype(maxdt))
     
@@ -416,6 +416,9 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
 
     for s in 1:K
         restrict_full!(n[s], conn)
+        for l in 1:length(tree)
+            fill_ghost!(n[s], l, conn, fbc)
+        end
     end
 
     return (t + dt, dt)
