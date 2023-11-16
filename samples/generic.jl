@@ -178,6 +178,15 @@ function _main(;
                
                # Restrict mobility to be between these values
                clamp_mobility = (0.0, Inf),
+
+               # Transport model
+               trans = transport_model(lxfile, air_dens; clamp_mobility),
+
+               # Chemical model
+               chem = chemical_model(lxfile, air_dens, composition),
+
+               # Allow ihomogeneous gas density.  Defaults to a homogeneous density.
+               dens = sr.TrivialDensityScaling(),
                
                # How many iterations between each recomputing the mesh?
                refine_every=2,
@@ -256,8 +265,8 @@ function _main(;
                
                outfolder=expanduser("~/data/steamroll/$(name)")
                )
-
-    
+         
+         
     Polyester.reset_threads!()
 
     # Set flux scheme Koren / WENO
@@ -294,16 +303,7 @@ function _main(;
     stencil = (poisson_order == 2 ? sr.StarStencil{D}() :
                poisson_order == 4 ? sr.BoxStencil{D}() :
                throw(ArgumentError("poisson_order = $poisson_order not allowed")))
-    
-    ###
-    #  DEFINE TRANSPORT AND CHEMICAL MODELS
-    ###
-    trans = transport_model(lxfile, air_dens; clamp_mobility)
-    chem = chemical_model(lxfile, air_dens, composition)
-
-    # Allow ihomogeneous gas density.  This is a homogeneous density.
-    dens = sr.TrivialDensityScaling()
-    
+        
     # The data struct that contains all streamer fields
     fields = sr.StreamerFields(T, sr.nspecies(chem), length(phmodel), D, M, G, Val(storage))
     freebcinst = freebnd ? sr.FreeBC(geom, fields.u, refine_maxlevel, rootsize, h) : nothing
