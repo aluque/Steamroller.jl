@@ -347,7 +347,8 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
     end
-    
+    restrict_full!(u, conn)
+
     electric_field!(tree, e, eabs, u, h, t, eb)
     
     for l in 1:length(tree)
