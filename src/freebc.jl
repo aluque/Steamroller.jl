@@ -54,14 +54,6 @@ struct FreeBC{D, M, T, S <: ScalarBlockField, GT, P10, P01}
 end
 
 
-struct FreeBoundaryConditions{T, dim, H <: HomogeneousBoundaryConditions, TR}
-    level::Int
-    b::Vector{T}
-    hom::H
-    tree::TR
-end
-
-
 _perpdim(::FreeBC{D, M, T, S, CylindricalGeometry{dim}}) where {dim, D, M, T, S} = dim
 
 function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::StreamerConf{T},
@@ -261,45 +253,3 @@ end
 
 restrict!(f::FreeBC, dest, src, sub) = nothing
 
-
-"""
-Fill ghost cells in the boundary of a given layer by applying the 
-boundary conditions specified by `bc`
-"""
-function fill_ghost_bnd!(u::ScalarBlockField{D, M, G, T}, v::Vector{Boundary{D}},
-                         bc::FreeBoundaryConditions{T, dim}, inhom=false;
-                         leavesonly=true) where {D, M, G, T, dim}
-    (;b, level, hom, tree) = bc
-    otherdim = mod1(dim + 1, D)
-
-    # First set the homogeneous b.c.
-    fill_ghost_bnd!(u, v, hom, false)
-
-    inhom || return nothing
-
-    face0 = Base.setindex(zero(CartesianIndex{D}()), 1, dim)
-    #@batch
-    for link in v
-        face0 == link.face || continue
-        l = link.level
-        
-        B = tree[l].coord[link.block]
-
-        # The inhomogeneous boundary is applied only on leaf nodes; other nodes solve for the
-        # correction, which is has homogeneous boundary.
-        (!leavesonly || isleaf(tree, l, B)) || continue
-        
-        iblk = B[otherdim]
-        i0 = (iblk - 1) * M
-        
-        p = 2^(level - l)
-        for i in 1:M
-            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
-            
-            bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
-            u[I, link.block] += 2 * bmean
-        end
-    end
-
-    return nothing
-end
