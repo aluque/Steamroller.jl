@@ -316,9 +316,7 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
         fill_ghost!(q1, l, conn, pbc)
     end
 
-    # Either applies free boundary conditions by changing the source q1 or does nothing
-    # if freebnd==nothing.
-    xbc = setfreebc!(freebnd, pbc, fld, conf, tree, conn)
+    setfreebc!(freebnd, pbc, fld, conf, tree, conn)
     
     for i in 1:poisson_iter
         for l in 1:length(tree)
@@ -327,10 +325,10 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
 
         if poisson_fmg
             fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                 tree, conn, geom, xbc, lpl; nup, ndown, ntop)
+                 tree, conn, geom, pbc, lpl; nup, ndown, ntop)
         else
             vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                    tree, conn, geom, xbc, lpl; nup, ndown, ntop)
+                    tree, conn, geom, pbc, lpl; nup, ndown, ntop)
         end
     end
     
@@ -339,16 +337,16 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     restrict_full!(ne, conn)
 
     for l in 1:length(tree)
-        fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], xbc, true; leavesonly=false)
-        fill_ghost_interp!(u, conn.refboundary[l])
-
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
-    end
-    restrict_full!(u, conn)
 
+        fill_ghost_copy!(u, conn.neighbor[l])
+        fill_ghost_bnd!(u, conn.boundary[l], pbc)
+        fill_ghost_interp!(u, conn.refboundary[l])
+        fill_ghost_free!(u, freebnd, tree, l)
+    end
+    
     electric_field!(tree, e, eabs, u, h, t, eb)
     
     for l in 1:length(tree)

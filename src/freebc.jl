@@ -86,14 +86,13 @@ function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::Streame
         end
     end
 
-    freebc!(q1, uh, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, fr)
-    return FreeBoundaryConditions{T, dim, typeof(pbc), typeof(tree)}(fr.level, fr.b, pbc, tree)
+    freebc!(q1, uh, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, conn, fr)
 end
 
 setfreebc!(::Nothing, pbc, strfields, strconf, tree, conn) = pbc
 
 function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, s, 
-                 tree, conf::FreeBC{D}) where {D, M, G}
+                 tree, conn, conf::FreeBC{D}) where {D, M, G}
     @assert D == 2 "Free boundary conditions only support D=2 at the moment"
     (;geom, H, R, level, u1, am, b, f, rodft01, rodft10) = conf
 
@@ -114,6 +113,8 @@ function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, 
     
     mul!(am, rodft01, am)
     @. b = am * h / 2^(level - 1) / 2
+
+    setouter!(q, b, tree, conn, dim, level, s, geom)
 end
 
 
@@ -153,60 +154,99 @@ end
 Set the outer values of the charge `q` in order to satisfy the inhomogeneous boundary
 conditions given by `b`.
 """
-function setouter!(q::ScalarBlockField{D, M, G}, b, tree, dim, level, s, geom) where {D, M, G}
+function setouter!(q::ScalarBlockField{D, M, G}, b, tree, conn, dim, level, s, geom) where {D, M, G}
     otherdim = mod1(dim + 1, D)
 
     δ = CartesianIndex(ntuple(d -> d == dim ? 1 : 0, Val(D)))
+    face0 = Base.setindex(zero(CartesianIndex{D}()), 1, dim)
     
     for l in 1:level
         sl = s / (1 << (l - 1))^2
-        k = last(axes(tree[l].domain, dim))
-        for iblk in axes(tree[l].domain, otherdim)
-            B = CartesianIndex(ntuple(d -> d == otherdim ? iblk : k, Val(D)))
-            hasblock(tree[l], B) || continue
+        p = 2^(level - l)
+        
+        for blink in conn.boundary[l]
+            face0 == blink.face || continue
+            k = last(axes(tree[l].domain, dim))
+            iblk = blink.block
+            B = tree[l].coord[iblk]
 
-            i0 = (iblk - 1) * M
-            blk = tree[l][B]
+            i0 = (B[otherdim] - 1) * M
 
-            p = 2^(level - l)
             for i in 1:M
                 I = CartesianIndex(ntuple(d -> d == dim ? G + M : G + i, Val(D)))
-                J = CartesianIndex(ntuple(d -> d == dim ? M * (B[d] - 1) + M : M * (B[d] - 1) + i, Val(D)))
+                J = CartesianIndex(ntuple(d -> d == dim ? M * (B[d] - 1) + M : M * (B[d] - 1) + i,
+                                          Val(D)))
                 # Average b
                 bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
-                q[I, blk] += 2 * factor(geom, J, δ) * bmean / sl
+                q[I, iblk] += 2 * factor(geom, J, δ) * bmean / sl
             end
         end
+
+        # We need an extra correction for corners in refinement boundaries. This is because
+        # computing the laplacian in the corner includes one ghost cell that is interpolated from
+        # a coarser block including one ghost in the coarser mesh. That ghost is not applying the
+        # inhomogeneous b.c. so its effect has to be corrected with the source in the corner
+        # (non-ghost) cell of the fine grid.
+        for rlink in conn.refboundary[l]
+            k = last(axes(tree[l].domain, dim))
+            iblk = rlink.fine
+            B = tree[l].coord[iblk]
+
+            # Not in a boundary
+            B[dim] == k || continue
+            
+            # +1 if fine is below coarse, -1 if fine is above coarse
+            dir = rlink.face[otherdim]
+
+            # index in the block that we will affect
+            i = dir == -1 ? G + 1 : M + G
+            I = CartesianIndex(ntuple(d -> d == dim ? G + M : i, Val(D)))
+            
+            # Global mesh index
+            j = (B[otherdim] - 1) * M + i - G
+            J = CartesianIndex(ntuple(d -> d == dim ? M * (B[d] - 1) + M : j, Val(D)))
+
+            J1 = CartesianIndex(ntuple(d -> d == dim ? div(J[d] - 1, 2) + 1 : div(J[d] - 1, 2) + 1 + dir,
+                                       Val(D)))
+            if dir == 1
+                bmean = sum(@view b[p * j + 1 : p * (j + 2)]) / (2p)
+            else
+                bmean = sum(@view b[p * (j - 3) : p * (j - 1) - 1]) / (2p)
+            end
+            
+            # __w1 is the interpolation weight defined in interp.jl.
+            q[I, iblk] += 2 * __w1(Val(D)) * factor(geom, J1, δ) * bmean / sl
+        end        
     end
 end
 
 
-function fill_ghost_free!(u::ScalarBlockField{D, M, G}, conf::FreeBC{D}, tree) where {D, M, G}
+function fill_ghost_free!(u::ScalarBlockField{D, M, G}, conf::FreeBC{D}, tree, l) where {D, M, G}
     (;geom, level, b) = conf
-    dim = _perpdim(conf)    
+    dim = _perpdim(conf)
     otherdim = mod1(dim + 1, D)
 
     δ = CartesianIndex(ntuple(d -> d == dim ? 1 : 0, Val(D)))
-    for l in 1:level
-        k = last(axes(tree[l].domain, dim))
-        for iblk in axes(tree[l].domain, otherdim)
-            B = CartesianIndex(ntuple(d -> d == otherdim ? iblk : k, Val(D)))
-            hasblock(tree[l], B) || continue
-
-            i0 = (iblk - 1) * M
-            blk = tree[l][B]
-
-            p = 2^(level - l)
-            for i in 1:M
-                I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
-                # Average b
-                bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
-                u[I, blk] += 2 * bmean
-            end
+    k = last(axes(tree[l].domain, dim))
+    for iblk in axes(tree[l].domain, otherdim)
+        B = CartesianIndex(ntuple(d -> d == otherdim ? iblk : k, Val(D)))
+        hasblock(tree[l], B) || continue
+        
+        i0 = (iblk - 1) * M
+        blk = tree[l][B]
+        
+        p = 2^(level - l)
+        for i in 1:M
+            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
+            # Average b
+            bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
+            u[I, blk] += 2 * bmean
         end
     end
 end
-    
+
+fill_ghost_free!(u, ::Nothing, tree) = nothing
+
 function newblock!(f::FreeBC, j0=nothing)
     (;uh) = f
     j = newblock!(uh)
@@ -253,13 +293,10 @@ function fill_ghost_bnd!(u::ScalarBlockField{D, M, G, T}, v::Vector{Boundary{D}}
         i0 = (iblk - 1) * M
         
         p = 2^(level - l)
-        for i in 1:(M + 2G)
-            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : i, Val(D)))
-
-            # Cells outside the boundaries are not corrected
-            (i0 + i - 1 - G) >= 0 && p * (i0 + i - G) <= length(b) || continue
+        for i in 1:M
+            I = CartesianIndex(ntuple(d -> d == dim ? G + M + 1 : G + i, Val(D)))
             
-            bmean = sum(@view b[p * (i0 + i - 1 - G) + 1: p * (i0 + i - G)]) / p
+            bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
             u[I, link.block] += 2 * bmean
         end
     end
