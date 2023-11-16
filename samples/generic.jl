@@ -77,7 +77,15 @@ function malagon(;kw...)
     f = (sr.Background(1.0e15) +
          sr.Gaussian(;A=1e21, w=0.003 * sqrt(2),  z0=0.05, extend=-1) +
          sr.Gaussian(;A=1e21, w=0.0015 * sqrt(2), z0=0.061, extend=0))
-                         
+
+    trans = sr.MinimalTransportModel(;μ = 0.0372193,
+                                     D = 0.18,
+                                     αi = 433200.0,
+                                     Ei = 2e7,
+                                     αa = 2000.0,
+                                     Ea = 3e6)
+    chem = sr.NetIonization(trans)
+    
     main(;rootsize=(1, 8),
          L=0.03,
          freebnd=true,
@@ -89,6 +97,9 @@ function malagon(;kw...)
 
          phmodel = sr.empty_photoionization(Float64), #sr.bourdon3(Float64),
 
+         trans,
+         chem,
+         
          #phmodel = sr.bourdon3(Float64),
          clamp_mobility = (0.0, 0.1),
 
