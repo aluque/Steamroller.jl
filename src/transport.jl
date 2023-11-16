@@ -3,9 +3,42 @@
 abstract type AbstractTransportModel end
 
 """
+A minimal transport model with constant mobility and diffusion coefficient. Ionization follows
+the townsend expression.
+"""
+@kwdef struct MinimalTransportModel{T} <: AbstractTransportModel
+    "Mobility."
+    μ::T
+
+    "Diffusion coefficient."
+    D::T
+
+    "α for ionization."
+    αi::T
+
+    "Characteristic field for ionization."
+    Ei::T
+
+    "α for attachment."
+    αa::T
+
+    "Characteristic field for attachment."
+    Ea::T
+end
+
+
+@inline mobility(m::MinimalTransportModel, eabs, p=nothing) = m.μ
+@inline diffusion(m::MinimalTransportModel, eabs, p=nothing) = m.D
+@inline nettownsend(m::MinimalTransportModel, eabs, p=nothing) = townsend(m, eabs) - attachment(m, eabs)
+@inline attachment(m::MinimalTransportModel, eabs, p=nothing) = m.αa * exp(-m.Ea / eabs)
+@inline townsend(m::MinimalTransportModel, eabs, p=nothing) = m.αi * exp(-m.Ei / eabs)
+@inline netionization(m::MinimalTransportModel, eabs, p=nothing) = m.μ * eabs * nettownsend(m, eabs)
+
+
+"""
 The transport model proposed in Bagheri et al. 2018.
 """
-Base.@kwdef struct BagheriTransportModel{T} <: AbstractTransportModel
+@kwdef struct BagheriTransportModel{T} <: AbstractTransportModel
     "μ0 in μe = μ0 |E|^eμ."
     μ0::T = 2.3987
 
@@ -154,5 +187,3 @@ end
 @inline attachment(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.attachment_index)
 @inline townsend(m::TransportLookup, eabs, p=nothing) = m.lookup(eabs, m.townsend_index)
 @inline netionization(m::TransportLookup, eabs, p=nothing) = nettownsend(m, eabs) * eabs * mobility(m, eabs)
-
-
