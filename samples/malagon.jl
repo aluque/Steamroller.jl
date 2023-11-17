@@ -1,5 +1,8 @@
 """
-Reproduce the results from _Malagon & Luque 2019_.
+Reproduce the results from [Malagon & Luque 2019][1].
+
+[1]: <https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2019GL082063> "Malagón-Romero, A., & Luque, A. (2019). Spontaneous emergence of space stems ahead of negative
+leaders in lightning and long sparks. Geophysical Research Letters, 46."
 """
 module Simulation
 
@@ -87,7 +90,7 @@ input = InputParameters{T}(
     freebnd=true,
     
     # Background field
-    eb = [0.0, -10e5 * 1000],
+    eb = [0.0, -10e5],
     
     initial_conditions = [1 => f, 2 => f],
     
