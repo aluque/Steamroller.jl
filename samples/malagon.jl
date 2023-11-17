@@ -1,6 +1,7 @@
 """
 Reproduce the results from [Malagon & Luque 2019][1].
 
+---
 [1]: <https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2019GL082063> "Malagón-Romero, A., & Luque, A. (2019). Spontaneous emergence of space stems ahead of negative
 leaders in lightning and long sparks. Geophysical Research Letters, 46."
 """
