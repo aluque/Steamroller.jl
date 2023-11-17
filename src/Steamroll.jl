@@ -21,6 +21,8 @@ using Base: @propagate_inbounds
 using Interpolations
 using FFTW
 using SpecialFunctions
+using NamedTupleTools
+using JLD2
 
 const BlockIndex = Int
 
@@ -59,6 +61,7 @@ include("chemistry.jl")
 include("streamer.jl")
 include("freebc.jl")
 include("initcond.jl")
+include("simulate.jl")
 include("util.jl")
 
 include("util/lxcat.jl")

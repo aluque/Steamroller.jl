@@ -548,7 +548,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 end
                 
                 if !isempty(output) && isapprox(t, first(output))
-                    _run_callbacks(output_callbacks, t)
+                    _run_callbacks(output_callbacks, t, conf, fields, tree, conn)
                     popfirst!(output)
                 end
                 
@@ -573,7 +573,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
             msg = _msg()
             @error "An error occurred within the simulation (see stacktrace)\n```\n$msg\n```"
             if !isempty(onerror)
-                _run_callbacks(onerror, t)
+                _run_callbacks(onerror, t, conf, fields, tree, conn)
             end
             rethrow(e)
         end
