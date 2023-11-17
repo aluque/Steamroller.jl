@@ -237,7 +237,7 @@ function fill_ghost_free!(u::ScalarBlockField{D, M, G}, conf::FreeBC{D}, tree, l
     end
 end
 
-fill_ghost_free!(u, ::Nothing, tree) = nothing
+fill_ghost_free!(u, ::Nothing, tree, l) = nothing
 
 function newblock!(f::FreeBC, j0=nothing)
     (;uh) = f

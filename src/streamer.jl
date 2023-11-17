@@ -173,7 +173,7 @@ end
 # the StreamerField.
 newblock!(::Tuple{}, j) = j
 newblock!(t::Tuple, j) = (newblock!(t[1], j); newblock!(Base.tail(t), j))
-newblock!(::Nothing, j) = j
+newblock!(::Nothing, j=nothing) = j
 newblock!(t::Tuple) = (j = newblock!(t[1]); newblock!(Base.tail(t), j))
 
 
