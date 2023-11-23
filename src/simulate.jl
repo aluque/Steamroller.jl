@@ -275,7 +275,11 @@ function _simulate(input::InputParameters{T}) where T
 
     # Allow users to give eb as Vector. Performance impact sould be negligible as everything is done
     # below function boundaries.
-    eb = SVector{length(input.eb)}(input.eb)
+    if input.eb isa AbstractVector
+        eb = SVector{length(input.eb)}(input.eb)
+    else
+        eb = input.eb
+    end
     
     # Set the streamer configuration
     conf = StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, input.trans, fluxschem,
