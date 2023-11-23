@@ -227,7 +227,8 @@ restrict!(t::Tuple, dest, src, sub) = (restrict!(t[1], dest, src, sub); restrict
 """
 Configuration of a streamer simulation
 """
-struct StreamerConf{T, D,
+struct StreamerConf{T,
+                    EB,
                     G  <: AbstractGeometry,
                     BC,
                     L  <: LaplacianDiscretization,
@@ -243,7 +244,7 @@ struct StreamerConf{T, D,
     h::T
 
     "Background electric field"
-    eb::SVector{D, T}
+    eb::EB
     
     "Geometry"
     geom::G
@@ -419,13 +420,13 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
             fill_ghost!(n[s], l, conn, fbc)
         end
     end
-
+        
     return (t + dt, dt)
 end
 
 
-function refine!(fields::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t, dt;
-                 minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T, D}
+function refine!(fields::StreamerFields, conf::StreamerConf{T}, tree, conn, t, dt;
+                 minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T}
     (;m, refdelta, n, freeblocks) = fields
     (;h, fbc, freebnd) = conf
 
@@ -433,7 +434,7 @@ function refine!(fields::StreamerFields, conf::StreamerConf{T, D}, tree, conn, t
 
     refmark!(tree, m, ref, h, t, dt)
     fill_ghost_copy!(m, conn)
-    refdelta!(tree, refdelta, m, BoxStencil{D}())
+    refdelta!(tree, refdelta, m, BoxStencil{dimension(m)}())
 
     for ni in n
         fill_ghost_copy!(ni, conn)
