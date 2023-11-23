@@ -357,7 +357,7 @@ nghost(::ScalarBlockField{D, M, G}) where {D, M, G} = G
 nghost(::VectorBlockField{D, M, G}) where {D, M, G} = G
 
 """ Select the first half (`h==1`) or second half (`h==2`) of a range. """
-function halfrange(r::UnitRange, h)
+function halfrange(r::UnitRange, h)::UnitRange{Int}
     if h == 1
         return first(r):(first(r) + div(length(r), 2) - 1)
     elseif h == 2
