@@ -130,6 +130,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "A refinement criterium based on the laplacian."
     refine_laplacian_alpha = nothing
     
+    "Stop refinement beyond a certain r."
+    refine_max_r = nothing
+    
     "The type of flux scheme (:koren / :weno)"
     flux_scheme::Symbol = :koren
     
@@ -272,6 +275,9 @@ function _simulate(input::InputParameters{T}) where T
                             AndRef(TimeLimitedRef(zero(T), input.refine_density_upto, nref),
                                    tref))
 
+        if !isnothing(input.refine_max_r)
+            ref = OrRef(DirThresholdRef{1, M, T}(input.refine_max_r, input.refine_min_h), ref)
+        end
     else
         ref = input.refinement
         nref = input.refinement
