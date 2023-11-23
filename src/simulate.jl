@@ -35,6 +35,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Absolute maximum level.  This is a hard limit; not very relevant."
     maxlevel::Int = 16
     
+    "Boundary conditions for the Poisson equation."
+    poisson_boundary = nothing
+    
     "Use free boundary conditions?"
     freebnd::Bool = false
     
@@ -223,9 +226,10 @@ function _simulate(input::InputParameters{T}) where T
     tree = Tree(D, CartesianIndices(ntuple(i -> input.rootsize[i], Val(D))), input.maxlevel)
 
     # Boundary conditions for the Poisson equation
-    pbc = (D == 2 ?
-        boundaryconditions(((1, -1), (-1, -1))) :
-        boundaryconditions(((-1, -1), (-1, -1), (-1, -1))))
+    pbc = (!isnothing(input.poisson_boundary) ?
+           input.poisson_boundary : (D == 2 ?
+                                     boundaryconditions(((1, -1), (-1, -1))) :
+                                     boundaryconditions(((-1, -1), (-1, -1), (-1, -1)))))
         
 
     # Boundary conditions for the fluids
