@@ -252,7 +252,7 @@ function _simulate(input::InputParameters{T}) where T
     if isnothing(input.refinement)
         # The Teunissen refinement criterium based on the electric field
         tref = TeunissenRef(fields.eabs, input.trans, input.refine_teunissen_c0,
-                            input.refine_teunissen_c1)
+                            input.refine_teunissen_c1, input.dens)
     
         if !isnothing(input.refine_laplacian_alpha)
             tref = AndRef(tref, LaplacianRef(input.refine_laplacian_alpha, fields.n[1],
