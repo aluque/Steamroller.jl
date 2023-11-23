@@ -524,25 +524,14 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
     iter = 0
     start = time()
 
-    _msg() = join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
-                      Pair{Symbol, Any}[:t => t,
-                                        :dt => dt,
-                                        :iter => iter,
-                                        :max_level => findlast(!isempty, tree),
-                                        :min_h => h / 2^(findlast(!isempty, tree) - 1),
-                                        :nblocks => nblocks(tree),
-                                        :running_time => time() - start,
-                                        :elapsed_step => elapsed_step,
-                                        :elapsed_refine => elapsed_refine,
-                                        :elapsed_connectivity => elapsed_connectivity]), "\n")
-
+    
     @withprogress begin
         try
-            while t < tend            
-                elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t,
-                                                         get(output, 1, convert(T, Inf)),
-                                                         Val(:ssprk3))
+            while t < tend
+                tfinal = get(output, 1, convert(T, Inf))
                 
+                elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t, tfinal,
+                                                         Val(:ssprk3))
                 if t > 0 && dt < min_dt
                     @error "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
                     throw(ErrorException())
@@ -562,7 +551,8 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 
                 if (iter % progress_every) == 0
                     @logprogress iter * dt / (iter * dt + tend - t) #(t / tend)
-                    msg = _msg()
+                    msg = _msg(;h, t, dt, iter, tree, elapsed_step, elapsed_refine,
+                               elapsed_connectivity, start)
                     #percent = format("{:.1f}", 100 * t / tend)
                     @info "\n```\n$msg\n```" sticky=true _id=:report
                 end
@@ -571,7 +561,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
             end
         catch e
             empty!(Logging.current_logger().sticky_messages)
-            msg = _msg()
+            msg = _msg(;h, t, dt, iter, tree, elapsed_step, elapsed_refine, elapsed_connectivity, start)
             @error "An error occurred within the simulation (see stacktrace)\n```\n$msg\n```"
             if !isempty(onerror)
                 _run_callbacks(onerror, t, conf, fields, tree, conn)
@@ -582,11 +572,27 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
 
     empty!(Logging.current_logger().sticky_messages)
 
-    msg = _msg()
+    msg = _msg(;h, t, dt, iter, tree, elapsed_step, elapsed_refine, elapsed_connectivity, start)
     @info "Simulation completed\n```\n$msg\n```"
 
     return (;t, dt, iter, elapsed_step, elapsed_refine, elapsed_connectivity)
 end
+
+
+function _msg(;h, t, dt, iter, tree, elapsed_step, elapsed_refine, elapsed_connectivity, start)
+    join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
+             Pair{Symbol, Any}[:t => t,
+                               :dt => dt,
+                               :iter => iter,
+                               :max_level => findlast(!isempty, tree),
+                               :min_h => h / 2^(findlast(!isempty, tree) - 1),
+                               :nblocks => nblocks(tree),
+                               :running_time => time() - start,
+                               :elapsed_step => elapsed_step,
+                               :elapsed_refine => elapsed_refine,
+                               :elapsed_connectivity => elapsed_connectivity]), "\n")
+end
+
 
 _run_callbacks(f::Tuple{}, args...) = nothing
 function _run_callbacks(f::Tuple, args...)
