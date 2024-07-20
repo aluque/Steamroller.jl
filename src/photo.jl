@@ -91,7 +91,7 @@ end
 """
 Construct the bourdon 2/3-term model as described by Bagheri 2018.
 """
-function bourdon(T, A, λ;
+function bourdon(T, A, λ, D=2;
                  # Index of the source (the species that contains ionization used as a source).
                  source=2,
                  # ξB νu/νi
@@ -105,18 +105,23 @@ function bourdon(T, A, λ;
     k = @. pO2 * λ * co.centi^-1 * co.torr^-1
 
     term = PhotoionizationTerm{T}.(a, k .^ 2)
-    bc = boundaryconditions(((1, 1), (-1, -1)))
+    bc = (D == 2 ?
+        boundaryconditions(((1, 1), (-1, -1))) :
+        boundaryconditions(((-1, -1), (-1, -1), (-1, -1))))
+    
     phmodel = PhotoionizationModel{length(A), T, typeof(bc)}(term, 1, (1, 2), bc, 2)
 
     return phmodel
 end
 
 # Direct copy of table A2 in Bagheri 2018
-bourdon2(T=Float64) = bourdon(T,
-                              [0.0974, 0.5877],    # A
-                              [0.0021, 0.1775])    # λ
+bourdon2(T=Float64, D=2) = bourdon(T,
+                                   [0.0021, 0.1775], # A
+                                   [0.0974, 0.5877], # λ
+                                   D)
 
 # Direct copy of table A3 in Bagheri 2018
-bourdon3(T=Float64) = bourdon(T,
-                              [1.986e-4, 0.0051, 0.4886],  # A
-                              [0.0553, 0.1460, 0.8900])    # λ
+bourdon3(T=Float64, D=2) = bourdon(T,
+                                   [1.986e-4, 0.0051, 0.4886],  # A
+                                   [0.0553, 0.1460, 0.8900],    # λ
+                                   D)

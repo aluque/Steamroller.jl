@@ -96,5 +96,5 @@ end
     u[I]
 end
 
-@inline diagelm(s, ::HelmholtzDiscretization{3, 2},
-                    ::CartesianGeometry, ::Val{:lhs}, J) = -6 - s * helm.k2
+@inline diagelm(s, helm::HelmholtzDiscretization{3, 2},
+                ::CartesianGeometry, ::Val{:lhs}, J) = -6 - s * helm.k2
