@@ -1,5 +1,5 @@
 #=
-This is a code to handle complex chemical networks with rate coefficients that depend on
+This is a code to handle complex chemicat networks with rate coefficients that depend on
 external variables such as electric field.
 
 The code aims to be performant and benefit from the julia compiler to dynamically produce code
