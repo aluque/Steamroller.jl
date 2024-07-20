@@ -19,9 +19,9 @@ end
                               ::CartesianGeometry,
                               ::Val{:lhs})
     (;k2) = helm
-    @stencil u[I] [0         1  0;
-                   1 (-4 - s * k2)  1;
-                   0         1  0]
+    @fastmath @stencil u[I] [0         1  0;
+                             1 (-4 - s * k2)  1;
+                             0         1  0]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -40,9 +40,9 @@ end
                               ::Val{:lhs})
     i = J[1]
     (;k2) = helm
-    @stencil u[I] [0      (2i - 2) / (2i - 1)  0;
-                   1            (-4 - s * k2)  1;
-                   0            2i / (2i - 1)  0]
+    @fastmath @stencil u[I] [0      (2i - 2) / (2i - 1)  0;
+                             1            (-4 - s * k2)  1;
+                             0            2i / (2i - 1)  0]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -51,9 +51,9 @@ end
                               ::Val{:lhs})
     i = J[2]
     (;k2) = helm
-    @stencil u[I] [0                                 1                0;
-                   ((2i - 2) / (2i - 1)) (-4 - s * k2)  (2i / (2i - 1));
-                   0                                 1                0]
+    @fastmath @stencil u[I] [0                                 1                0;
+                             ((2i - 2) / (2i - 1)) (-4 - s * k2)  (2i / (2i - 1));
+                             0                                 1                0]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -76,17 +76,17 @@ end
                               ::CartesianGeometry,
                               ::Val{:lhs})
     (;k2) = helm
-    @stencil u[I] [[0   0   0;
-                    0   1   0;
-                    0   0   0];;;
-                   
-                   [0              1   0;
-                    1  (-6 - s * k2)   1;
-                    0              1   0];;;
-                   
-                   [0   0   0;
-                    0   1   0;
-                    0   0   0]]
+    @fastmath @stencil u[I] [[0   0   0;
+                              0   1   0;
+                              0   0   0];;;
+                             
+                             [0              1   0;
+                              1  (-6 - s * k2)   1;
+                              0              1   0];;;
+                             
+                             [0   0   0;
+                              0   1   0;
+                              0   0   0]]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
