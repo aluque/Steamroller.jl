@@ -81,6 +81,8 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
                           2 => Background(nbg_i) + Gaussian(;A=N0_i, w=w_i, z0=z0_i,
                                                             extend=extend_i)]
     
+    "Start the tree by fully populating it up to this level"
+    init_populate_level = 2
     
     "Background field."
     eb = @SVector([zero(T), T(-18.75e3 / 1.25e-2)])
@@ -297,7 +299,7 @@ function _simulate(input::InputParameters{T}) where T
                         input.poisson_fmg, input.poisson_iter, input.poisson_level_iter)
     
     # Start with a full tree up to level 2
-    populate!(tree, 2)
+    populate!(tree, input.init_populate_level)
     newblocks!(fields, nblocks(tree))
     newblocks!(freebcinst, nblocks(tree))
 
