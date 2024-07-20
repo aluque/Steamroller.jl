@@ -47,10 +47,13 @@ function (f::Gaussian)(x, y, z)
     return A * exp(-(((x - x0)^2 + (y - y0)^2 + _extend(z - z0, extend)^2) / w^2)^s)
 end
 
+const WARN_X0Y0_ISSUED = Ref(false)
+
 function (f::Gaussian)(r, z)
     (;A, w, x0, y0, z0, s, extend) = f
-    if (x0 != 0 || y0 != 0)
+    if (x0 != 0 || y0 != 0) && !WARN_X0Y0_ISSUED[]
         @warn "x0 [=$x0] and y0 [=$y0] ignored in cylindrically symmetrical gaussian"
+        WARN_X0Y0_ISSUED[] = true
     end
 
     return A * exp(-((r^2 + _extend(z - z0, f.extend)^2) / w^2)^s)
