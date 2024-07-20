@@ -79,16 +79,16 @@ discretizations.
                               ::LaplacianDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
-    @inbounds @fastmath @stencil u[I] [0  1  0;
-                   1 -4  1;
-                   0  1  0]
+     @fastmath @stencil u[I] [0  1  0;
+                              1 -4  1;
+                              0  1  0]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
-    @inbounds @fastmath u[I]
+     @fastmath u[I]
 end
 
 @inline diagelm(s, ::LaplacianDiscretization{2, 2},
@@ -102,9 +102,9 @@ end
                               ::CylindricalGeometry{1},
                               ::Val{:lhs})
     i = J[1]
-    @inbounds @fastmath @stencil u[I] [0  (2i - 2) / (2i - 1)  0;
-                   1                   -4  1;
-                   0         2i / (2i - 1) 0]
+     @fastmath @stencil u[I] [0  (2i - 2) / (2i - 1)  0;
+                              1                   -4  1;
+                              0         2i / (2i - 1) 0]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -112,16 +112,16 @@ end
                               ::CylindricalGeometry{2},
                               ::Val{:lhs})
     i = J[2]
-    @inbounds @fastmath @stencil u[I] [0                      1                0;
-                                       ((2i - 2) / (2i - 1)) -4  (2i / (2i - 1));
-                                       0                      1                0]
+     @fastmath @stencil u[I] [0                      1                0;
+                              ((2i - 2) / (2i - 1)) -4  (2i / (2i - 1));
+                              0                      1                0]
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CylindricalGeometry,
                               ::Val{:rhs})
-    @inbounds u[I]
+     u[I]
 end
 
 @inline diagelm(s, ::LaplacianDiscretization{2, 2},
@@ -134,18 +134,18 @@ end
                               ::LaplacianDiscretization{2, 4},
                               ::CartesianGeometry,
                               ::Val{:lhs})
-    @inbounds @fastmath @stencil u[I] [1    4  1;
-                                       4  -20  4;
-                                       1    4  1] 6
+     @fastmath @stencil u[I] [1    4  1;
+                              4  -20  4;
+                              1    4  1] 6
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CartesianGeometry,
                               ::Val{:rhs})
-    @inbounds @fastmath @stencil u[I] [0   1  0;
-                                       1   8  1;
-                                       0   1  0] 12
+     @fastmath @stencil u[I] [0   1  0;
+                              1   8  1;
+                              0   1  0] 12
 end
 
 @inline diagelm(s, ::LaplacianDiscretization{2, 4},
@@ -159,9 +159,9 @@ end
                               ::CylindricalGeometry{1},
                               ::Val{:lhs})
     i = J[1]
-    @inbounds @fastmath @stencil u[I] [2*(i-1)/(2i-1)    4*(-2+9i-16i^2+8i^3)/(2i-1)^3  2*(i-1)/(2i-1);
-                                       4                      -16*(1-5i+5i^2)/(1-2i)^2               4;
-                                       2i/(2i-1)            4*(1+i-8i^2+8i^3)/(2i-1)^3        2i/(2i-1)] 6
+    @fastmath @stencil u[I] [2*(i-1)/(2i-1)    4*(-2+9i-16i^2+8i^3)/(2i-1)^3  2*(i-1)/(2i-1);
+                             4                      -16*(1-5i+5i^2)/(1-2i)^2               4;
+                             2i/(2i-1)            4*(1+i-8i^2+8i^3)/(2i-1)^3        2i/(2i-1)] 6
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -169,9 +169,9 @@ end
                               ::CylindricalGeometry{1},
                               ::Val{:rhs})
     i = J[1]
-    @inbounds @fastmath @stencil u[I] [0   (2i-2)/(2i-1)  0;
-                                       1               8  1;
-                                       0       2i/(2i-1)  0] 12
+     @fastmath @stencil u[I] [0   (2i-2)/(2i-1)  0;
+                              1               8  1;
+                              0       2i/(2i-1)  0] 12
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -179,9 +179,9 @@ end
                               ::CylindricalGeometry{2},
                               ::Val{:lhs})
     i = J[2]
-    @inbounds @fastmath @stencil u[I] [2*(i-1)/(2i-1)                                        4   2i/(2i-1);
-                                       4*evalpoly(i, (-2, 9, -16, 8))/(2i-1)^3  -16*evalpoly(i, (1, -5, 5))/(1-2i)^2 4*evalpoly(i, (1, 1,-8, 8))/(2i-1)^3;
-                                       2*(i-1)/(2i-1)                                        4          2i/(2i-1)] 6
+    @fastmath @stencil u[I] [2*(i-1)/(2i-1)                                        4   2i/(2i-1);
+                             4*evalpoly(i, (-2, 9, -16, 8))/(2i-1)^3  -16*evalpoly(i, (1, -5, 5))/(1-2i)^2 4*evalpoly(i, (1, 1,-8, 8))/(2i-1)^3;
+                             2*(i-1)/(2i-1)                                        4          2i/(2i-1)] 6
 end
 
 @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -189,16 +189,16 @@ end
                               ::CylindricalGeometry{2},
                               ::Val{:rhs})
     i = J[2]
-    @inbounds @fastmath @stencil u[I] [0                           1          0;
-                                       (2i-2)/(2i-1)               8  2i/(2i-1);
-                                       0                           1          0] 12
+    @fastmath @stencil u[I] [0                           1          0;
+                             (2i-2)/(2i-1)               8  2i/(2i-1);
+                             0                           1          0] 12
 end
 
 
 @inline function diagelm(s, ::LaplacianDiscretization{2, 4},
                          ::CylindricalGeometry{N}, ::Val{:lhs}, J) where N
     i = J[N]
-    @inbounds @fastmath -16*(1-5i+5i^2)/(1-2i)^2 / 6
+    @fastmath -16*(1-5i+5i^2)/(1-2i)^2 / 6
 end
 
 # @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -279,7 +279,7 @@ end
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
-    @inbounds @fastmath @stencil u[I] [[0   0   0;
+    @fastmath @stencil u[I] [[0   0   0;
                                         0   1   0;
                                         0   0   0];;;
                                        
@@ -296,7 +296,7 @@ end
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
-    @inbounds u[I]
+     u[I]
 end
 
 @inline diagelm(s, ::LaplacianDiscretization{3, 2},
@@ -306,7 +306,7 @@ end
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
                               ::Val{:lhs})
-    @inbounds @fastmath @stencil u[I] [[0   1   0;
+    @fastmath @stencil u[I] [[0   1   0;
                                         1   2   1;
                                         0   1   0];;;
                                        
@@ -323,7 +323,7 @@ end
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
                               ::Val{:rhs})
-    @inbounds @fastmath @stencil u[I] [[0   0   0;
+    @fastmath @stencil u[I] [[0   0   0;
                                         0   1   0;
                                         0   0   0];;;
                                        
