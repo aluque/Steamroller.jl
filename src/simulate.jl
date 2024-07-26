@@ -16,15 +16,12 @@ const Td = co.Td
 const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
 
 
-@kwdef mutable struct InputParameters{T}
-    "Name for the simulation."
-    name::String = "noname-" * String(rand('A':'Z', 3)) * Dates.format(now(), "yyyymmdd_HHmmss")
-    
+@kwdef mutable struct InputParameters{T}    
     "Number of dimensions (2 or 3)"
     D::Int = 2
     
     "Block size"
-    M = 8
+    M::Int = 8
     
     "Root-level block dimensions"
     rootsize = (1, 1)
@@ -172,11 +169,26 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Order of the poisson equation (2 and 4 are allowed)."
     poisson_order::Int = 2
     
+    "Input file"
+    _input::String
+
+    "Name for the simulation."
+    name::String = splitext(basename(_input))[1]
+
     "Where to write output data"
-    outfolder=expanduser("$(name)")
+    outfolder=joinpath(dirname(_input), name)
 
     "Functions to call at output snapshots."
     output_callbacks=()
+
+    "Start date of run"
+    _date
+
+    "Git commit"
+    _git_commit
+
+    "Is git repo dirty?"
+    _git_dirty
 end
 
 """

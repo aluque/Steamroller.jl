@@ -62,6 +62,7 @@ include("streamer.jl")
 include("freebc.jl")
 include("initcond.jl")
 include("simulate.jl")
+include("inputs.jl")
 include("util.jl")
 
 include("util/lxcat.jl")
