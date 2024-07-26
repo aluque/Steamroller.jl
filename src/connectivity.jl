@@ -192,7 +192,7 @@ end
             ifrom = @ntuple $D d->(f[d] == 0 ? G + i_d : (f[d] == -1 ? i_d + G : i_d + M))
             ito =   @ntuple $D d->(f[d] == 0 ? G + i_d : (f[d] == 1  ? i_d : i_d + M + G))
             
-            uto[ito...] = ufrom[ifrom...]
+            @inbounds uto[ito...] = ufrom[ifrom...]
         end
     end
 end
@@ -298,7 +298,7 @@ to be filled in `fine`, `face` is the direction from `fine` to `coarse`.
                     end
                     f += __conserv_coeff2(Val($D)) * fine[Jf2]
                 end                
-                fine[Jf] = f
+                @inbounds fine[Jf] = f
             end
         end
 end
