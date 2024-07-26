@@ -534,7 +534,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                                                          Val(:ssprk3))
                 if t > 0 && dt < min_dt
                     @error "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
-                    throw(ErrorException())
+                    throw(ErrorException("dt below min_dt"))
                 end
                 
                 if !isempty(output) && isapprox(t, first(output))
