@@ -417,7 +417,7 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
     for s in 1:K
         restrict_full!(n[s], conn)
         for l in 1:length(tree)
-            fill_ghost!(n[s], l, conn, fbc)
+            fill_ghost_conserv!(n[s], l, conn, fbc)
         end
     end
         
