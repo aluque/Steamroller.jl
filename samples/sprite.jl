@@ -7,8 +7,8 @@ McHarg, M. G., Ebert, U., & Luque, A. (2020). On the emergence mechanism of carr
 """
 module Simulation
 
-using Steamroll: InputParameters, simulate, @react_str
-import Steamroll as sr
+using Steamroller: InputParameters, simulate, @react_str
+import Steamroller as sr
 
 function setup()
     T = Float64

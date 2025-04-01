@@ -7,8 +7,8 @@ leaders in lightning and long sparks. Geophysical Research Letters, 46."
 """
 module Simulation
 
-using Steamroll: InputParameters, simulate, @react_str
-import Steamroll as sr
+using Steamroller: InputParameters, simulate, @react_str
+import Steamroller as sr
 
 function setup()
     T = Float64

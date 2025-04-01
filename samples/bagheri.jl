@@ -21,8 +21,8 @@ using Formatting
 using Printf
 using TerminalLoggers
 using ProgressLogging
-import Steamroll as sr
-import SteamrollPlot as srplt
+import Steamroller as sr
+import SteamrollerPlot as srplt
 import PyPlot as plt
 using DataFrames
 using CSV

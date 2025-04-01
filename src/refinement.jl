@@ -205,7 +205,7 @@ The result is stored in `m` as true/false.
 end
 
 @enum RefDelta REMOVE=-1 KEEP=0 REFINE=1
-Base.zero(::Type{Steamroll.RefDelta}) = KEEP
+Base.zero(::Type{Steamroller.RefDelta}) = KEEP
 Base.convert(::Type{Float64}, d::RefDelta) = convert(Float64, Int(d))
 
 """

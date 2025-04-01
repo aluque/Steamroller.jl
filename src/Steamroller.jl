@@ -1,4 +1,4 @@
-module Steamroll
+module Steamroller
 
 using DelimitedFiles
 using Base.Cartesian
