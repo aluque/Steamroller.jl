@@ -170,7 +170,7 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     poisson_order::Int = 2
     
     "Input file"
-    _input::String
+    _input::String = ""
 
     "Name for the simulation."
     name::String = replace(basename(_input), r"(\.in)?\.jl$" => "")
@@ -182,13 +182,13 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     output_callbacks=()
 
     "Start date of run"
-    _date
+    _date = now()
 
     "Git commit"
-    _git_commit
+    _git_commit = "UNKNOWN"
 
     "Is git repo dirty?"
-    _git_dirty
+    _git_dirty = true
 end
 
 """
