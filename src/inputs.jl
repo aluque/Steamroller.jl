@@ -32,7 +32,7 @@ function wrap_input(f, finput::String; pretty_print=false, write_inputs=true)
     end
 
     if write_inputs
-        writejl(joinpath(input.outfolder, input.name * ".jl"), f, ntpl)
+        writejl(joinpath(input.outfolder, input.name * ".in.jl"), f, ntpl)
     end
     simulate(input)
 end

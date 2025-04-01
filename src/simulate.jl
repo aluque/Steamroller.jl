@@ -173,7 +173,7 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     _input::String
 
     "Name for the simulation."
-    name::String = splitext(basename(_input))[1]
+    name::String = replace(basename(_input), r"(\.in)?\.jl$" => "")
 
     "Where to write output data"
     outfolder=joinpath(dirname(_input), name)
