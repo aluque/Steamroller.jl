@@ -31,6 +31,13 @@ function wrap_input(f, finput::String; pretty_print=false, write_inputs=true)
         @info "Input read from $finput" * "\n" * String(take!(io))
     end
 
+    if !isdir(input.outfolder)
+        mkdir(input.outfolder)
+        @info "$(input.outfolder) created"
+    else
+        @warn "$(input.outfolder) already exists and output data may overwrite exisiting files."
+    end
+    
     if write_inputs
         writejl(joinpath(input.outfolder, input.name * ".in.jl"), f, ntpl)
     end

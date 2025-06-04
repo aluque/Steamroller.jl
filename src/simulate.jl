@@ -223,8 +223,6 @@ function _simulate(input::InputParameters{T}) where T
     if !isdir(input.outfolder)
         mkdir(input.outfolder)
         @info "$(input.outfolder) created"
-    else
-        @warn "$(input.outfolder) already exists and output data may overwrite exisiting files."
     end
 
 
