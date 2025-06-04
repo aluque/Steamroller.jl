@@ -154,6 +154,7 @@ function find_git_root(start_dir::String)
         end
         current_dir = dirname(current_dir)
     end
+
     return nothing # No Git repository found
 end
 
@@ -167,7 +168,16 @@ function git_commit(repo::GitRepo)
     return commit, dirty
 end
 
-git_commit() = git_commit(GitRepo(find_git_root(@__DIR__)))
+function git_commit()
+    mayberoot = find_git_root(@__DIR__)
+
+    if !isnothing(mayberoot)
+        return git_commit(GitRepo(mayberoot))
+    else
+        return "", true
+    end
+end
+
 
 
 function pprint(io::IO, s, level=0)
