@@ -15,7 +15,12 @@ using TOML
 using Dates
 using LibGit2
 
-function wrap_input(f, finput::String; pretty_print=false, write_inputs=true)
+function run_from_input(finput; kw...)
+    input = wrap_input(InputParameters, finput; kw...)
+    simulate(input)
+end
+
+function wrap_input(f, finput::String; pretty_print=true, write_inputs=true)
     _, ext = splitext(finput)
     if ext == ".jl"
         ntpl = readjl(f, finput)
@@ -41,7 +46,8 @@ function wrap_input(f, finput::String; pretty_print=false, write_inputs=true)
     if write_inputs
         writejl(joinpath(input.outfolder, input.name * ".in.jl"), f, ntpl)
     end
-    simulate(input)
+
+    return input
 end
 
 """
