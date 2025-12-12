@@ -78,7 +78,7 @@ end
 
 
 """
-Find the maximum value of a field and return a tuple `(location, value)`.
+Find the minimum value of a field and return a tuple `(location, value)`.
 """
 function findminloc(u::ScalarBlockField{D}, tree, h=1.0) where D
     function blkmin(l, c, blk)
