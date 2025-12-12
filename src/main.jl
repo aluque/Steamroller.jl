@@ -16,7 +16,7 @@ const Td = co.Td
 const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
 
 
-@kwdef mutable struct InputParameters{T}    
+@kwdef mutable struct InputParameters{T}
     "Number of dimensions (2 or 3)"
     D::Int = 2
     
@@ -175,8 +175,11 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Name for the simulation."
     name::String = replace(basename(_input), r"(\.in)?\.jl$" => "")
 
+    "An identifier for this simulation."
+    _uid::String = String(rand('A':'Z', 3)) * "-" * Dates.format(now(), "yyyymmdd-HHMMSS")
+
     "Where to write output data"
-    outfolder=joinpath(dirname(_input), name)
+    outfolder = joinpath(splitdir(_input)[1], name, _uid)
 
     "Functions to call at output snapshots."
     output_callbacks=()
@@ -191,40 +194,71 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     _git_dirty = true
 end
 
+
 """
-Start a simulation with the given parameters.
+Main entry point when run as a script. ARGS must contain a list with input files (read and updated
+in order). The function also admits extra keyword parameters in kw... that are useful for debug.
 
 The parameters a received in `input` and possibly updated with additional keyword arguments.
 Generally `input` should be of type `InputParameters` but you can use any type woth the appropriate
 fields.
 """
-function simulate(input=NamedTuple(); kw...)
-    params = merge(ntfromstruct(input), kw)
+function (@main)(ARGS; kw...)
+    s = ArgParseSettings()
+        
+    @add_arg_table! s begin
+        "input_file"
+        help = "Input file with parameters"
+        required = true
+        nargs = '+'
+    end
+        
+    args = parse_args(ARGS, s)
+    
+    allowed = [:T, allowedinps(_main)..., allowedinps(InputParameters)...]
+    input = Dict{Symbol, Any}(:T => Float64)
+    for input_file in args["input_file"]
+        merge!(input, read_input(input_file, allowed))
+    end
+    
+    merge!(input, pairs(kw))
 
     # Convert to InputParameters to enforce types and defaults
     local params1
     try
-        params1 = InputParameters(params...)
+        # Must remove T because it's not allowed as kw
+        T = pop!(input, :T)
+        params1 = InputParameters{T}(;input...)
     catch e
         @error "Error in the input parameters (see backtrace)"
         rethrow(e)
     end
 
+    io = IOBuffer()
+    pprint(IOContext(io, :color => true), params1)
+    @info "Input parameters" * "\n" * String(take!(io))
+
     with_logger(TerminalLogger(meta_formatter=metafmt)) do
-        _simulate(params1)
+        _main(params1)
     end
+
+    return 0
 end
 
 
-function _simulate(input::InputParameters{T}) where T
+function _main(input::InputParameters{T}) where T
     (;D, M, L) = input
-    Polyester.reset_threads!()
 
-    if !isdir(input.outfolder)
-        mkdir(input.outfolder)
-        @info "$(input.outfolder) created"
+    if input._git_dirty
+        @warn """
+              Your git repo is dirty (you have uncommitted changes).
+              To make runs reproducible it is strongly recommended that you run in a clean repo
+              so that the commit id can be stored.
+              """
+        sleep(5)
     end
 
+    Polyester.reset_threads!()
 
     # Set flux scheme Koren / WENO
     fluxschem = (input.flux_scheme == :koren ? FluxSchemeKoren() :
@@ -270,7 +304,8 @@ function _simulate(input::InputParameters{T}) where T
     ###
     if isnothing(input.refinement)
         # The Teunissen refinement criterium based on the electric field
-        tref = TeunissenRef(fields.eabs, input.trans, input.refine_teunissen_c0,
+        tref = TeunissenRef(fields.eabs, input.trans,
+                            input.refine_teunissen_c0,
                             input.refine_teunissen_c1, input.dens)
     
         if !isnothing(input.refine_laplacian_alpha)
@@ -354,6 +389,12 @@ function _simulate(input::InputParameters{T}) where T
         onerror = (onerror..., _save_err,)
     end
     
+    if !isdir(input.outfolder)
+        mkdir(input.outfolder)
+        @info "$(input.outfolder) created"
+    end
+
+    writejl(joinpath(input.outfolder, input.name * ".ref.jl"), input)
 
     run!(fields, conf, tree, conn, input.tend; progress_every=10, input.output,
          derefine_minlevel,

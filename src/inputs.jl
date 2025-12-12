@@ -9,83 +9,70 @@ types (anything other than numbers, strings or booleans), which are forced to ta
 Also functions writejl and writetoml are provided to write the actually used parameters, for
 future reference.
 =#
-module WrapInput; end
 
 using TOML
 using Dates
 using LibGit2
 
-function run_from_input(finput; kw...)
-    input = wrap_input(InputParameters, finput; kw...)
-    simulate(input)
-end
-
-function wrap_input(f, finput::String; pretty_print=true, write_inputs=true)
+function read_input(finput::String, allowed)
     _, ext = splitext(finput)
     if ext == ".jl"
-        ntpl = readjl(f, finput)
+        input = readjl(finput, allowed)
     elseif ext == ".toml"
-        ntpl = readtoml(f, finput)
+        input = readtoml(finput, allowed)
     end
     
-    input = f(;ntpl...)
-
-    if pretty_print
-        io = IOBuffer()
-        pprint(IOContext(io, :color => true), input)
-        @info "Input read from $finput" * "\n" * String(take!(io))
-    end
-
-    if !isdir(input.outfolder)
-        mkdir(input.outfolder)
-        @info "$(input.outfolder) created"
-    else
-        @warn "$(input.outfolder) already exists and output data may overwrite exisiting files."
-    end
-    
-    if write_inputs
-        writejl(joinpath(input.outfolder, input.name * ".in.jl"), f, ntpl)
-    end
-
     return input
+end
+
+function _include_inp(mod, file)
+    @eval mod include($file)
 end
 
 """
 Read a julia input file and produces a `NamedTuple` with the values defined there that are also
 kwargs of the function `f` or fields if `f` is a type.
 """
-function readjl(f, input::String)
-    @eval WrapInput include(abspath($input))
-
-    p = Pair{Symbol, Any}[]
-
-    input_vars = allowedinps(f)
+function readjl(input::String, allowed)
+    M = Module(gensym())
+    Core.eval(M, :(using Steamroller))
+    Core.eval(M, :(const co = Steamroller.co))
     
-    for sym in names(WrapInput, all=true)
-        if sym in input_vars
-            push!(p, sym => getfield(WrapInput, sym))
+    Core.include(M, abspath(input))
+    
+    # The @invokelatest here is needed because the bindings in M are too new to be captured
+    # at the time where the method was defined.
+    @invokelatest _readjl(input, allowed, M)
+end
+
+function _readjl(input, allowed, M::Module)
+    p = Dict{Symbol, Any}()
+
+    for sym in names(M, all=true)
+        if sym in allowed
+            push!(p, sym => getfield(M, sym))
         end
     end
 
-    if :_input in input_vars
+    if :_input in allowed
         push!(p, :_input => abspath(input))
     end
 
-    if :_date in input_vars
+    if :_date in allowed
         push!(p, :_date => now())
     end
 
-    if :_git_commit in input_vars
+    if :_git_commit in allowed
         hash, dirty = git_commit()
         push!(p, :_git_commit => hash)
         push!(p, :_git_dirty => dirty)
     end
         
-    return NamedTuple(p)
+    return p
 end
 
 "Find input variable names allowed for `f`."
-function allowedinps(f::Function)
+function allowedinps(f::Function)    
     @assert length(methods(f)) == 1 "Ambiguity: more than one method defined for _main"
 
     method = first(methods(f))
@@ -94,18 +81,20 @@ end
 
 allowedinps(f::Type) = fieldnames(f)
 
+allowedinps(f::AbstractVector{Symbol}) = f
+
+
 """
 Read a toml input file and produces a `NamedTuple` with the values defined there that are also
 kwargs of the function `f`.
 """
-function readtoml(f, input::String)
+function readtoml(input::String, allowed)
     params = TOML.parsefile(input)
 
     p = Pair{Symbol, Any}[]
 
-    input_vars = allowedinps(f)
     for (k, v) in params
-        if Symbol(k) in input_vars
+        if Symbol(k) in allowed
             push!(p, Symbol(k) => v)
         end
     end
@@ -129,25 +118,21 @@ end
 
 
 """
-Writes into a file a julia expression with the kwargs of the function `f` contained in params.
-Typically params will be obtained from `Base.@locals`.
+Write into a file a julia expression with the fields and values of `v`.
 """
-function writejl(io::IO, f, params)
+function writejl(io::IO, v)
     expr = quote end
-    input_vars = allowedinps(f)
-
-    for (sym, val) in pairs(params)
-        if sym in input_vars
-            rval = val isa Symbol ? QuoteNode(val) : val
-            push!(expr.args, :($sym = $rval))
-        end
+    
+    for (sym, val) in pairs(ntfromstruct(v))
+        rval = val isa Symbol ? QuoteNode(val) : val
+        push!(expr.args, :($sym = $rval))
     end
     print(io, expr)
 end
 
 
 """
-Calls `writejl(io,...)` opening the file with name `fname`.
+Call `writejl(io,...)` opening the file with name `fname`.
 """
 function writejl(fname::String, args...)
     open(fname, "w") do fout
