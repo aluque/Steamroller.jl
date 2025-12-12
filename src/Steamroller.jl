@@ -61,7 +61,7 @@ include("chemistry.jl")
 include("streamer.jl")
 include("freebc.jl")
 include("initcond.jl")
-include("simulate.jl")
+include("main.jl")
 include("inputs.jl")
 include("util.jl")
 
