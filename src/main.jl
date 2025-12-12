@@ -184,6 +184,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Functions to call at output snapshots."
     output_callbacks=()
 
+    "Whether this is a debug run"
+    debug = false
+    
     "Start date of run"
     _date = now()
 
@@ -238,11 +241,16 @@ function (@main)(ARGS; kw...)
     pprint(IOContext(io, :color => true), params1)
     @info "Input parameters" * "\n" * String(take!(io))
 
+    local ret
     with_logger(TerminalLogger(meta_formatter=metafmt)) do
-        _main(params1)
+        ret = _main(params1)
     end
 
-    return 0
+    if params1.debug
+        return ret
+    else
+        return 0
+    end
 end
 
 
@@ -389,13 +397,15 @@ function _main(input::InputParameters{T}) where T
         onerror = (onerror..., _save_err,)
     end
     
-    if !isdir(input.outfolder)
-        mkdir(input.outfolder)
-        @info "$(input.outfolder) created"
+    if !input.debug
+        if !isdir(input.outfolder)
+            mkdir(input.outfolder)
+            @info "$(input.outfolder) created"
+        end
+
+        writejl(joinpath(input.outfolder, input.name * ".ref.jl"), input)
     end
-
-    writejl(joinpath(input.outfolder, input.name * ".ref.jl"), input)
-
+    
     run!(fields, conf, tree, conn, input.tend; progress_every=10, input.output,
          derefine_minlevel,
          refine_maxlevel,
