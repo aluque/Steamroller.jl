@@ -580,17 +580,18 @@ end
 
 
 function _msg(;h, t, dt, iter, tree, elapsed_step, elapsed_refine, elapsed_connectivity, start)
-    join(map(x -> @sprintf("%30s = %-30s", string(first(x)), repr(last(x))), 
-             Pair{Symbol, Any}[:t => t,
-                               :dt => dt,
+    join(map(x -> @sprintf("   %-14s = %-30s", string(first(x)), repr(last(x))), 
+             Pair{Symbol, Any}[:t => round(t, sigdigits=4),
+                               :dt => round(dt, sigdigits=4),
                                :iter => iter,
                                :max_level => findlast(!isempty, tree),
-                               :min_h => h / 2^(findlast(!isempty, tree) - 1),
+                               :min_h => round(h / 2^(findlast(!isempty, tree) - 1), sigdigits=4),
                                :nblocks => nblocks(tree),
-                               :running_time => time() - start,
-                               :elapsed_step => elapsed_step,
-                               :elapsed_refine => elapsed_refine,
-                               :elapsed_connectivity => elapsed_connectivity]), "\n")
+                               :running_time => round(time() - start, digits=1),
+                               # :elapsed_step => elapsed_step,
+                               # :elapsed_refine => elapsed_refine,
+                               # :elapsed_connectivity => elapsed_connectivity
+                               ]), "\n")
 end
 
 
