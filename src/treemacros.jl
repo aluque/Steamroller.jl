@@ -35,7 +35,7 @@ end
 ```
 
 `deepfirst` indicates that the iteration will proceed from the higher (finest) level and will not
-move to a lower level until the each level is exhausted.  Use this if the operation in the loop at
+move to a lower level until each level is exhausted.  Use this if the operation in the loop at
 one level depends on higher levels.  Within each level the order of blocks is non-deterministic.
 
 `flat` indicates that the operation can performed on blocks at an arbitrary order. This is generally
