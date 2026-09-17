@@ -2,6 +2,8 @@
    We basically reuse all the code in multigrid changing the applied stencil.
 =#
 
+abstract type PhotoionizationModel; end
+
 """
 A single term in the Helmholtz approximation to photoionization.
 """
@@ -17,7 +19,7 @@ end
 A set of terms representing a full photoionization model with `L` terms, affecting densities of two
 species in `target`.
 """
-struct PhotoionizationModel{L, T, BC, P}
+struct FluidPhotoionizationModel{L, T, BC, P} <: PhotoionizationModel
     "Each `PhotoionizationTerm` in the Helmholtz approximation."
     term::SVector{L, PhotoionizationTerm{T}}
 
@@ -34,16 +36,39 @@ struct PhotoionizationModel{L, T, BC, P}
     iter::Int
 end
 
-PhotoionizationModel{L, T, BC}(args...) where {L, T, BC} = PhotoionizationModel{L, T, BC, 2}(args...)
-_order(::PhotoionizationModel{L, T, BC, P}) where {L, T, BC, P} = P
+FluidPhotoionizationModel{L, T, BC}(args...) where {L, T, BC} = FluidPhotoionizationModel{L, T, BC, 2}(args...)
+_order(::FluidPhotoionizationModel{L, T, BC, P}) where {L, T, BC, P} = P
 
-Base.length(::PhotoionizationModel{L}) where {L} = L
+Base.length(::FluidPhotoionizationModel{L}) where {L} = L
+
+####
+##.  Monte Carlo Photoionization
+####
+struct MontecarloPhotoionizationModel{T, D, M}  <: PhotoionizationModel
+    "The efficiency factor (from production of a species S to effective photons."
+    eff::T
+
+    "Species index of the source."
+    source::Int
+    
+    "Target species (generally electrons and the ionized positive ions)"
+    target::NTuple{2, Int}    
+
+    "The log of the photon absorption rate is uniformly sampled between chimin and chimax."
+    logchimin::T
+
+    "The log of the photon absorption rate is uniformly sampled between chimin and chimax."
+    logchimax::T
+end
+
+Base.length(::MontecarloPhotoionizationModel) = 1
+
 
 """
 Add the photoionization term to the density derivatives in `dni`.
 """
 function photoionization!(tree::Tree{D}, dni, phfields, r, u1,
-                          phmodel, h, conn, geom) where D
+                          phmodel::FluidPhotoionizationModel, h, conn, geom) where D
     (;term, source, target, bc, iter) = phmodel
     for i in eachindex(term)
         for l in 1:length(tree)
@@ -75,6 +100,8 @@ end
     end        
 end
 
+photoionization!(tree::Tree, dni, phfields, r, u1,
+                 phmodel::MontecarloPhotoionizationModel, h, conn, geom) = nothing
 
 ###
 #  Predefined photo-ionization models
@@ -84,7 +111,7 @@ Construct an empty photo-ionization model.  Because the number of terms (0) is k
 this should have a zero overhead.
 """
 function empty_photoionization(T)    
-    return PhotoionizationModel{0, T, Nothing}(SVector{0, PhotoionizationTerm{T}}(), 0, (0, 0), nothing, 0)    
+    return FluidPhotoionizationModel{0, T, Nothing}(SVector{0, PhotoionizationTerm{T}}(), 0, (0, 0), nothing, 0)    
 end
 
 
@@ -109,7 +136,7 @@ function bourdon(T, A, λ, D=2;
         boundaryconditions(((1, 1), (-1, -1))) :
         boundaryconditions(((-1, -1), (-1, -1), (-1, -1))))
     
-    phmodel = PhotoionizationModel{length(A), T, typeof(bc)}(term, 1, (1, 2), bc, 2)
+    phmodel = FluidPhotoionizationModel{length(A), T, typeof(bc)}(term, 1, (1, 2), bc, 2)
 
     return phmodel
 end
@@ -125,3 +152,100 @@ bourdon3(T=Float64, D=2) = bourdon(T,
                                    [1.986e-4, 0.0051, 0.4886],  # A
                                    [0.0553, 0.1460, 0.8900],    # λ
                                    D)
+
+
+function setmcphotosrc!(model::MontecarloPhotoionizationModel, fld,
+                        dt, stepper::Val{:ssprk3})
+    (;photo, dn) = fld
+    s = model.source
+    
+    photo[1] .= dn[1][s] .* (dt / 6) .+ dn[2][s] .* (dt / 6) .+ dn[3][s] .* (2 * dt / 3)
+end
+
+setmcphotosrc!(::FluidPhotoionizationModel, fld, args...) = nothing
+
+"""
+Add photo ionization production. The field fields.photo[1] must be filled with the "source" field;
+for example in the Zhelezniak model where photon emission is assumed to be proportional to impact
+ionization this field must contain the total number density of impact ionization events in a cell.
+"""
+@bkernel order=flat function mcphoto!((tree, lvl, coord, blk),
+                                        model::MontecarloPhotoionizationModel{T, D, M},
+                                        fields, h, 
+                                        geom::AbstractGeometry) where {T, D, M}
+    
+    isleaf(tree, lvl, coord) || return
+    (;source, target, eff) = model
+    (;n, photo) = fields
+    f = cell_faces(coord, lvl, M, h)
+    hl = unitcell(lvl, h)
+
+    for I in localindices(photo[1])
+        I1 = addghost(photo[1], I)
+        dv = prod(ntuple(d -> volfactor(geom, d, f[d][I[d]], hl), Val(D)))
+        
+        # Compute number of photons
+        nex = dv * photo[1][I1, blk] * eff
+
+        # Poisson(...) errors for negative arguments. For small negative numbers we clamp to zero
+        # but if they are large and negative this may indicate a problem elsewhere so we fail here.
+        if nex < 0 && nex > -eps(typeof(nex))
+            nex = zero(nex)
+        end
+        
+        nphotons = rand(Poisson(nex))
+        
+        for j in 1:nphotons
+            x = ntuple(d -> f[d][I[d]] + hl * rand(), Val(D))            
+            xabs = samplephoton(x, model, geom, Val(D))
+            loc = treelocate(tree, xabs, M, h)
+            isnothing(loc) && continue
+            (blk1, m1, l1) = loc
+            # This may look complicated just to find the volume of the cell but it is here
+            # to enable cylindrical geometries. In cartesian geometry everything simplifies and
+            # I think the compiler is able to remove almost everything.
+            f1 = cell_faces(tree[l1].coord[blk1], l1, M, h)
+            hl1 = unitcell(l1, h)
+            for trg in target
+                dv1 = prod(ntuple(d -> volfactor(geom, d, f1[d][m1[d]], hl1), Val(D)))
+                ntrg = getblk(n[trg], blk1)
+                Atomix.@atomic ntrg[addghost(n[trg], m1)] += 1 / dv1
+            end
+        end
+    end
+end
+
+mcphoto!(tree, model::FluidPhotoionizationModel, fields, args...) = nothing
+
+"""
+Sample the absorption location of a photon emitted at `x`.
+"""
+function samplephoton(x, model, geom::CartesianGeometry, dim::Val{3})
+    (;logchimin, logchimax) = model
+    ell = exp(-(logchimin + rand() * (logchimax - logchimin)))
+    rabs = rand(Exponential(ell))
+    return x .+ rabs .* randsphere()
+end
+
+function samplephoton(x, model, geom::CylindricalGeometry{C}, dim::Val{2}) where C
+    (;logchimin, logchimax) = model
+    ell = exp(-(logchimin + rand() * (logchimax - logchimin)))
+    rabs = rand(Exponential(ell))
+    x1 = SA[x[1], x[2], 0] .+ rabs .* randsphere()
+    rho = hypot(x1[C], x1[3])
+    return SVector(ntuple(d -> d == C ? rho : x1[d], Val(2)))
+end
+
+
+"""
+Sample points from the unitary sphere. 
+"""
+function randsphere()
+    ϕ = 2π * rand()
+    sinϕ, cosϕ = sincos(ϕ)
+    
+    u = 2 * rand() - 1
+    v = sqrt(1 - u^2)
+
+    @SVector [v * cosϕ, v * sinϕ, u]
+end

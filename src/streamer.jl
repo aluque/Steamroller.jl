@@ -414,6 +414,9 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
         n[s] .= n[s] .+ (dn[1][s] .* (dt / 6) .+ dn[2][s] .* (dt / 6) .+ dn[3][s] .* (2 * dt / 3))
     end
 
+    setmcphotosrc!(conf.phmodel, fld, dt, stepper)
+    mcphoto!(tree, conf.phmodel, fld, conf.h, conf.geom)
+    
     for s in 1:K
         restrict_full!(n[s], conn)
         for l in 1:length(tree)

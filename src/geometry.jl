@@ -36,3 +36,8 @@ function factorexpr(::CylindricalGeometry{D}, c, d) where D
     :(1.0 + $(d[D]) / (2 * $(c[D]) - 1))
 end
 
+"""
+Cell volume factor along dimension d of a cell with faces from f1 to f1 .+ h
+"""
+@inline volfactor(::CartesianGeometry, d, f1, h) = h    
+@inline volfactor(::CylindricalGeometry{D}, d, f1, h) where D = d == D ? 2π * h * f1 : h
