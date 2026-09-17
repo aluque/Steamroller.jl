@@ -102,9 +102,9 @@ end
 
 """
 Find the block and local coordinates (without ghosts) of the smallest cell containing a point `r`.
-Returns a tuple `(level, coord, blk, m)` where `level` is the block level, `coord` is the block
-coordinate, `blk` is the block index and `m` is the local coordinate of the containing cell inside
-the block.
+Returns a tuple `(blk, m, l)` where `blk` is the block index, `m` is the local coordinate
+(CartesianIndex, 1-based, no ghost offset) of the containing cell inside the block and l is the
+level. Returns `nothing` if the point is outside the tree.
 """
 function treelocate(tree::Tree{D}, r, M, h=1.0) where D
     flev = finestlevel(tree)
@@ -116,7 +116,7 @@ function treelocate(tree::Tree{D}, r, M, h=1.0) where D
         blk = get(tree[l], coord)
         if !iszero(blk)
             m = CartesianIndex(ntuple(d -> mod1(c[d], M), Val(D)))
-            return (l, coord, blk, m)
+            return (blk, m, l)
         end
         c = CartesianIndex(ntuple(d -> fld1(c[d], 2), Val(D)))
     end
