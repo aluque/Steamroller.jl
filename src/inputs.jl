@@ -20,6 +20,8 @@ function read_input(finput::String, allowed)
         input = readjl(finput, allowed)
     elseif ext == ".toml"
         input = readtoml(finput, allowed)
+    else
+        error("Only .jl and .toml input files allowed")
     end
     
     return input

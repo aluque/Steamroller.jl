@@ -399,17 +399,18 @@ function _main(input::InputParameters{T}) where T
     
     if !input.debug
         if !isdir(input.outfolder)
-            mkdir(input.outfolder)
+            mkpath(input.outfolder)
             @info "$(input.outfolder) created"
         end
 
         writejl(joinpath(input.outfolder, input.name * ".ref.jl"), input)
-    end
+        cp(input._input, joinpath(input.outfolder, input.name * ".in.jl"))
     
-    run!(fields, conf, tree, conn, input.tend; progress_every=10, input.output,
-         derefine_minlevel,
-         refine_maxlevel,
-         output_callbacks, onerror)
+        run!(fields, conf, tree, conn, input.tend; progress_every=10, input.output,
+             derefine_minlevel,
+             refine_maxlevel,
+             output_callbacks, onerror)
+    end
 
     return NamedTuple(Base.@locals)
 end
