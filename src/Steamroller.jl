@@ -9,6 +9,7 @@ using DocStringExtensions
 using DataStructures
 using LoopVectorization
 using Polyester
+using Atomix
 using MacroTools
 using RecursiveArrayTools
 using Logging
@@ -19,11 +20,15 @@ using Dates
 using Format
 using Base: @propagate_inbounds
 using Interpolations
+using Distributions
 using FFTW
 using SpecialFunctions
 using NamedTupleTools
 using JLD2
 using ArgParse
+
+export LxCatSwarmData, loadtable, TransportLookup, Chemise, ReactionSet, RateLookup,
+    empty_photoionization, Background, Gaussian, @react_str
 
 const BlockIndex = Int
 
