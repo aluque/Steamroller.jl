@@ -384,7 +384,7 @@ Perform a single step of the time integration.
 - `dt`: time step.
 """
 function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
-               t, tmax, ::Val{:ssprk3}) where {T, K}
+               t, tmax, stepper::Val{:ssprk3}) where {T, K}
     (;dn, n, n1, maxdt) = fld
     (;dt_safety_factor, fbc) = conf
 
