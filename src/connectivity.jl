@@ -150,24 +150,12 @@ end
 
 """
 Fill all ghosts in field `u` at level `l` using connectivity `conn` and boundary conditions `bc`.
-`inhom` sets whether to apply inhomogeneous boundary conditions (if allowed by `bc`).
+`method` selects the interpolation used at refinement boundaries.
 """
-function fill_ghost!(u, l, conn, bc)
+function fill_ghost!(u, l, conn, bc, method=InterpLinear())
     fill_ghost_copy!(u, conn.neighbor[l])
     fill_ghost_bnd!(u, conn.boundary[l], bc)
-    fill_ghost_interp!(u, conn.refboundary[l])
-end
-
-
-"""
-Conservatively fill all ghosts in field `u` at level `l` using connectivity `conn` and 
-boundary conditions `bc`. `inhom` sets whether to apply inhomogeneous boundary conditions 
-(if allowed by `bc`).
-"""
-function fill_ghost_conserv!(u, l, conn, bc)
-    fill_ghost_copy!(u, conn.neighbor[l])
-    fill_ghost_bnd!(u, conn.boundary[l], bc)
-    fill_ghost_conserv!(u, conn.refboundary[l])
+    fill_ghost_interp!(u, conn.refboundary[l], method)
 end
 
 
@@ -261,10 +249,10 @@ end
 Fill ghost cells by interpolating from parent blocks at all refinement 
 boundaries.
 """
-function fill_ghost_interp!(u::ScalarBlockField{D}, conn::Connectivity) where {D}
+function fill_ghost_interp!(u::ScalarBlockField{D}, conn::Connectivity, method=InterpLinear()) where {D}
     # For each layer...
     for v in conn.refboundary
-        fill_ghost_interp!(u, v)
+        fill_ghost_interp!(u, v, method)
     end
 end
 

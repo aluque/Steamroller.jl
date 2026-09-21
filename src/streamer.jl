@@ -235,6 +235,7 @@ struct StreamerConf{T,
                     FBC, # Free b.c.
                     TR <: AbstractTransportModel,
                     F  <: AbstractFluxScheme,
+                    GI,
                     CH <: AbstractChemistry,
                     PH <: PhotoionizationModel,
                     S  <: AbstractDensityScaling,
@@ -266,6 +267,9 @@ struct StreamerConf{T,
 
     "Flux discretization scheme"
     fluxschem::F
+
+    "Interpolation of densities into refinement-boundary ghost cells"
+    densinterp::GI
     
     "Chemistry model"
     chem::CH
@@ -302,7 +306,7 @@ Compute derivatives starting from densities ni and stores them in dni.
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
-    (;eb, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
+    (;eb, h, trans, fluxschem, densinterp, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
     (;poisson_fmg, poisson_iter, poisson_level_iter) = conf
     (nup, ndown, ntop) = poisson_level_iter
     
@@ -340,7 +344,7 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     for l in 1:length(tree)
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
-        fill_ghost_interp!(ne, conn.refboundary[l], InterpCopy())
+        fill_ghost_interp!(ne, conn.refboundary[l], densinterp)
 
         fill_ghost_copy!(u, conn.neighbor[l])
         fill_ghost_bnd!(u, conn.boundary[l], pbc)
@@ -386,7 +390,7 @@ Perform a single step of the time integration.
 function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
                t, tmax, stepper::Val{:ssprk3}) where {T, K}
     (;dn, n, n1, maxdt) = fld
-    (;dt_safety_factor, fbc) = conf
+    (;dt_safety_factor, fbc, densinterp) = conf
 
     maxdt .= typemax(eltype(maxdt))
     
@@ -420,7 +424,7 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
     for s in 1:K
         restrict_full!(n[s], conn)
         for l in 1:length(tree)
-            fill_ghost_conserv!(n[s], l, conn, fbc)
+            fill_ghost!(n[s], l, conn, fbc, densinterp)
         end
     end
         

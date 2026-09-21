@@ -134,6 +134,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     
     "The type of flux scheme (:koren / :weno)"
     flux_scheme::Symbol = :koren
+
+    "Interpolation of densities into ghost cells at refinement boundaries (:limited / :linear / :copy)"
+    dens_interp::Symbol = :limited
     
     "Use full multigrid for the Poisson equation?"
     poisson_fmg::Bool = false
@@ -276,6 +279,12 @@ function _main(input::InputParameters{T}) where T
     # Koren needs 2 ghosts; WENO needs 4
     G = needghost(fluxschem)
 
+    # Interpolation of densities into ghost cells at refinement boundaries
+    densinterp = (input.dens_interp == :limited ? InterpLimited() :
+        input.dens_interp == :linear ? InterpLinear() :
+        input.dens_interp == :copy ? InterpCopy() :
+        throw(ArgumentError("Unknown ghost interpolation $(input.dens_interp)")))
+
     # Grid size at top level
     h = L / M
     derefine_minlevel = levelabove(input.derefine_max_h, h)
@@ -347,7 +356,7 @@ function _main(input::InputParameters{T}) where T
     end
     
     # Set the streamer configuration
-    conf = StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, input.trans, fluxschem,
+    conf = StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, input.trans, fluxschem, densinterp,
                         input.chem, input.phmodel, input.dens, ref, stencil, input.dt_safety_factor,
                         input.poisson_fmg, input.poisson_iter, input.poisson_level_iter)
     

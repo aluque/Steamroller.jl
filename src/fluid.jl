@@ -143,7 +143,7 @@ Compute electron fluxes.
             I1 = Base.setindex(I, I[d] - 1, d)
             x = ntuple(d1 -> h * (gbl0[d1] + I[d1] - G - 1) - (d == d1 ? h : h / 2), Val(D))
             theta = nscale(dens, x)
-                        
+
             ed = e[I, d, blk]
 
             eabs1 = (eabs[I, blk] + eabs[I1, blk]) / 2
@@ -245,15 +245,6 @@ function correct_flux!(f::VectorBlockField{D}, conn::Connectivity) where {D}
         correct_flux!(f, v)
     end
 end
-
-
-__conserv_coeff0(::Val{2}) = 1//2
-__conserv_coeff1(::Val{2}) = 1
-__conserv_coeff2(::Val{2}) = -1//4
-
-__conserv_coeff0(::Val{3}) = 1//2
-__conserv_coeff1(::Val{3}) = 5//4
-__conserv_coeff2(::Val{3}) = -1//4
 
 
 """

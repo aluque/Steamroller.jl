@@ -14,12 +14,23 @@
 
 struct InterpLinear end;
 struct InterpCopy end;
+struct InterpLimited end;
 
 """
-Interpolates from a rectangle of an D-dimensional array `src` to another 
+The minmod limiter: zero if `a` and `b` have opposite signs, otherwise the one with the smaller
+magnitude.
+"""
+@inline function minmod(a, b)
+    (a * b <= 0) && return zero(a)
+    abs(a) < abs(b) ? a : b
+end
+
+"""
+Interpolate linearly from a rectangle of an D-dimensional array `src` to another 
 D-dimensional array `dest`.
 
-If `base` exists the results is added to the corresponding value there.
+`func` allows to combine the interpolation with an previous value in the `dest` field (e.g. `+` adds
+the value). Default is to overwrite.
 """
 @generated function interp!(::InterpLinear,
                             dest::AbstractArray{T, D}, idest::CartesianIndices{D},
@@ -55,6 +66,50 @@ If `base` exists the results is added to the corresponding value there.
                 for j in 1:$D
                     #L = CartesianIndex(ntuple(d -> (i == d ? (2 * R[d] - 1) : 0), Val(D)))
                     f += __w1(Val($D)) * @nref $D src d -> (d == j ? Js[d] + 2 * i_d - 1 : Js[d])
+                end
+                dest[Jd] = func(f, dest[Jd])
+            end
+        end
+    end
+end
+
+
+"""
+Interpolate linearly with slope-limiting from a rectangle of an D-dimensional array `src` to another 
+D-dimensional array `dest`.
+
+`func` allows to combine the interpolation with an previous value in the `dest` field (e.g. `+` adds
+the value). Default is to overwrite.
+"""
+@generated function interp!(::InterpLimited,
+                            dest::AbstractArray{T, D}, idest::CartesianIndices{D},
+                            src::AbstractArray{T, D}, isrc::CartesianIndices{D},
+                            func::B=_first) where {T, D, B}
+    quote
+        # Is, Id -> Indexes of source, dest inside the rectangles
+        # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
+        for Is in CartesianIndices(isrc)
+            Id0 = 2 * Is - oneunit(Is)
+            Jd0 = idest[Id0]
+
+            Js = isrc[Is]
+            u0 = src[Js]
+
+            # Limited slopes scaled by 1/4: the offset of a child center from the coarse center
+            # is one quarter of the coarse cell size.
+            s = @ntuple $D j -> begin
+                up = @nref $D src d -> (d == j ? Js[d] + 1 : Js[d])
+                um = @nref $D src d -> (d == j ? Js[d] - 1 : Js[d])
+                minmod(up - u0, u0 - um) / 4
+            end
+
+            @nloops $D i d->0:1 begin
+                Jd = CartesianIndex(@ntuple $D d -> Jd0[d] + i_d)
+                sg = @ntuple $D d -> 2 * i_d - 1
+
+                f = u0
+                for j in 1:$D
+                    f += sg[j] * s[j]
                 end
                 dest[Jd] = func(f, dest[Jd])
             end
