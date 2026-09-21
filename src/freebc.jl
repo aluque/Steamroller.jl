@@ -61,20 +61,21 @@ function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::Streame
     (;uh) = fr
     (;q, q1, r, q, u, u1) = strfields
     (;pbc, h, geom, lpl, poisson_fmg, poisson_iter, poisson_level_iter) = strconf
+    (;poisson_ghost_interp) = strconf
     (nup, ndown, ntop) = poisson_level_iter
     dim = _perpdim(fr)
-    
+
     for i in 1:poisson_iter
         for l in 1:length(tree)
-            fill_ghost!(uh, l, conn, pbc)
+            fill_ghost!(uh, l, conn, pbc, poisson_ghost_interp)
         end
 
         if poisson_fmg
             fmg!(uh, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                 tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+                 tree, conn, geom, pbc, lpl; nup, ndown, ntop, ghost=poisson_ghost_interp)
         else
             vcycle!(uh, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                    tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+                    tree, conn, geom, pbc, lpl; nup, ndown, ntop, ghost=poisson_ghost_interp)
         end
     end
 

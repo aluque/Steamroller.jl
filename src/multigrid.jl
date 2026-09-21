@@ -13,40 +13,42 @@ densities, use s = eh^2/ϵ.
 With a discretization of type `HelmholtzDiscretization` this can also be used to solve
 Helmholtz's equation in the form Lu - s k² u + s b = 0.  Usually you want s = h^2 with h
 the grid spacing at level 1.
+
+`ghost` selects the interpolation used to fill ghost cells at refinement boundaries.
 """
 function fmg!(u, b, r, u1, s,
               tree, conn, geometry, bc, lpldisc;
-              lmax=0, ndown=3, ntop=5, nup=3, ω=1.25)
-    
+              lmax=0, ndown=3, ntop=5, nup=3, ω=1.25, ghost=InterpLinear())
+
     lmax = findlast(!isempty, tree)
     for l in lmax:-1:2
         sl = s / (1 << (l - 1))^2
         restrict_level!(u, conn.child[l])
-        fill_ghost!(u, l - 1, conn, bc)
-        
+        fill_ghost!(u, l - 1, conn, bc, ghost)
+
         residual_level!(r, u, b, sl, tree[l], lpldisc, geometry)
-        fill_ghost!(r, l, conn, bc)
-        
+        fill_ghost!(r, l, conn, bc, ghost)
+
         restrict_level!(r, conn.child[l])
-        fill_ghost!(r, l - 1, conn, bc)
-        
+        fill_ghost!(r, l - 1, conn, bc, ghost)
+
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)
     end
-    
+
     for l in 1:lmax
         copyto!(u1, u, tree[l])
 
         if l > 1
-            diffto!(u1, u, u1, tree[l - 1])            
-            fill_ghost!(u1, l - 1, conn, bc)
-            interp_add_level!(u, u1, conn.child[l])            
+            diffto!(u1, u, u1, tree[l - 1])
+            fill_ghost!(u1, l - 1, conn, bc, ghost)
+            interp_add_level!(u, u1, conn.child[l])
         end
-        
-        fill_ghost!(u, l, conn, bc)
+
+        fill_ghost!(u, l, conn, bc, ghost)
 
         vcycle!(u, b, r, u1, s, tree, conn, geometry, bc, lpldisc; lmax=l,
-               ndown, ntop, nup, ω)
+               ndown, ntop, nup, ω, ghost)
     end
 end
 
@@ -56,13 +58,15 @@ laplace operator (with unit grid spacing). s is the factor at level 1,
 if you are solving Poisson's equation ∇²u = -ρ/ϵ, set s = h^2/ϵ where
 h is the grid spacing at level 1.  If you want to use electron and ion
 densities, use s = eh^2/ϵ.
+
+`ghost` selects the interpolation used to fill ghost cells at refinement boundaries.
 """
 function vcycle!(u, b, r, u1, s,
                  tree, conn, geometry, bc, lpldisc;
                  lmax=0, ndown=3, ntop=5, nup=3,
-                 ω=1.0)
+                 ω=1.0, ghost=InterpLinear())
     (lmax == 0) && (lmax = length(tree))
-    
+
     # The "descending" side of the V
     for l in lmax:-1:2
         sl = s / (1 << (l - 1))^2
@@ -72,36 +76,36 @@ function vcycle!(u, b, r, u1, s,
         # `child` stores parent-child relations at the level of the child
         # so this restricts to level l - 1.
         restrict_level!(u, conn.child[l])
-        fill_ghost!(u, l - 1, conn, bc)
-        
+        fill_ghost!(u, l - 1, conn, bc, ghost)
+
         copyto!(u1, u, tree[l - 1])
 
         residual_level!(r, u, b, sl, tree[l], lpldisc, geometry)
-        fill_ghost!(r, l, conn, bc)
+        fill_ghost!(r, l, conn, bc, ghost)
 
         restrict_level!(r, conn.child[l])
-        fill_ghost!(r, l - 1, conn, bc)
-        
+        fill_ghost!(r, l - 1, conn, bc, ghost)
+
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
-                                     conn.child[l], geometry, lpldisc)        
+                                     conn.child[l], geometry, lpldisc)
     end
-    
+
     gauss_seidel_iter!(u, b, ω, s, ntop, 1, tree, conn, geometry, bc, lpldisc)
-    
+
     # The ascending side of the V
     for l in 2:lmax
         sl = s / (1 << (l - 1))^2
 
         diffto!(u1, u, u1, tree[l - 1])
 
-        fill_ghost!(u1, l - 1, conn, bc)
+        fill_ghost!(u1, l - 1, conn, bc, ghost)
 
         interp_add_level!(u, u1, conn.child[l])
-        fill_ghost!(u, l, conn, bc)
+        fill_ghost!(u, l, conn, bc, ghost)
 
         gauss_seidel_iter!(u, b, ω, sl, nup, l, tree, conn, geometry, bc, lpldisc)
 
-        fill_ghost!(u, l, conn, bc)
+        fill_ghost!(u, l, conn, bc, ghost)
     end
 end
 

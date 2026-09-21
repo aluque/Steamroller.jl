@@ -15,6 +15,19 @@
 struct InterpLinear end;
 struct InterpCopy end;
 struct InterpLimited end;
+"""
+This pseudo-quadratic interpolation improves a bit the linear interpolation. However, because it
+uses the same stencil as the InterpLinear, it only achieves quadratic accuracy if the interpolated
+function is separable along the axes (e.g. f(r, z) = f(r) + f(z)).
+
+However for general functions it improves over linear interpolation by cancelling the error
+proportional to `∇²f`; if f is a potential this is proportional to the charge density so we are
+removing a systematic error wherever the charge concentrates.
+
+`P = true` clamps the result at zero, for densities.
+"""
+struct InterpPseudoQuadratic{P} end
+InterpPseudoQuadratic() = InterpPseudoQuadratic{false}()
 
 """
 The minmod limiter: zero if `a` and `b` have opposite signs, otherwise the one with the smaller
@@ -111,6 +124,53 @@ the value). Default is to overwrite.
                 for j in 1:$D
                     f += sg[j] * s[j]
                 end
+                dest[Jd] = func(f, dest[Jd])
+            end
+        end
+    end
+end
+
+
+"""
+Interpolate from a rectangle of an D-dimensional array `src` to another D-dimensional array `dest`
+using the direction-wise quadratic fit described in `InterpPseudoQuadratic`.
+
+`func` allows to combine the interpolation with an previous value in the `dest` field (e.g. `+` adds
+the value). Default is to overwrite.
+"""
+@generated function interp!(::InterpPseudoQuadratic{P},
+                            dest::AbstractArray{T, D}, idest::CartesianIndices{D},
+                            src::AbstractArray{T, D}, isrc::CartesianIndices{D},
+                            func::B=_first) where {P, T, D, B}
+    quote
+        # Is, Id -> Indexes of source, dest inside the rectangles
+        # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
+        for Is in CartesianIndices(isrc)
+            Id0 = 2 * Is - oneunit(Is)
+            Jd0 = idest[Id0]
+
+            Js = isrc[Is]
+            u0 = src[Js]
+
+            # Centered slope (up - um) / 2 per coarse cell, times the quarter-cell offset of the
+            # fine cell center.  The curvature of the fitted parabola cancels between the two
+            # half cells, so this is exact on cell averages.
+            s = @ntuple $D j -> begin
+                up = @nref $D src d -> (d == j ? Js[d] + 1 : Js[d])
+                um = @nref $D src d -> (d == j ? Js[d] - 1 : Js[d])
+                (up - um) / 8
+            end
+
+            @nloops $D i d->0:1 begin
+                Jd = CartesianIndex(@ntuple $D d -> Jd0[d] + i_d)
+                sg = @ntuple $D d -> 2 * i_d - 1
+
+                f = u0
+                for j in 1:$D
+                    f += sg[j] * s[j]
+                end
+
+                f = $(P ? :(max(f, zero(f))) : :f)
                 dest[Jd] = func(f, dest[Jd])
             end
         end

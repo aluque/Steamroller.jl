@@ -236,6 +236,7 @@ struct StreamerConf{T,
                     TR <: AbstractTransportModel,
                     F  <: AbstractFluxScheme,
                     GI,
+                    PI,
                     CH <: AbstractChemistry,
                     PH <: PhotoionizationModel,
                     S  <: AbstractDensityScaling,
@@ -269,8 +270,11 @@ struct StreamerConf{T,
     fluxschem::F
 
     "Interpolation of densities into refinement-boundary ghost cells"
-    densinterp::GI
-    
+    dens_ghost_interp::GI
+
+    "Interpolation of the electrostatic potential into refinement-boundary ghost cells"
+    poisson_ghost_interp::PI
+
     "Chemistry model"
     chem::CH
 
@@ -306,8 +310,9 @@ Compute derivatives starting from densities ni and stores them in dni.
 function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
                  tree, conn) where {T}
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
-    (;eb, h, trans, fluxschem, densinterp, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
+    (;eb, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
     (;poisson_fmg, poisson_iter, poisson_level_iter) = conf
+    (;dens_ghost_interp, poisson_ghost_interp) = conf
     (nup, ndown, ntop) = poisson_level_iter
     
     netcharge!(tree, q, ni, chem)
@@ -325,15 +330,15 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     
     for i in 1:poisson_iter
         for l in 1:length(tree)
-            fill_ghost!(u, l, conn, pbc)
+            fill_ghost!(u, l, conn, pbc, poisson_ghost_interp)
         end
 
         if poisson_fmg
             fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                 tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+                 tree, conn, geom, pbc, lpl; nup, ndown, ntop, ghost=poisson_ghost_interp)
         else
             vcycle!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
-                    tree, conn, geom, pbc, lpl; nup, ndown, ntop)
+                    tree, conn, geom, pbc, lpl; nup, ndown, ntop, ghost=poisson_ghost_interp)
         end
     end
     
@@ -344,11 +349,11 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     for l in 1:length(tree)
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
-        fill_ghost_interp!(ne, conn.refboundary[l], densinterp)
+        fill_ghost_interp!(ne, conn.refboundary[l], dens_ghost_interp)
 
         fill_ghost_copy!(u, conn.neighbor[l])
         fill_ghost_bnd!(u, conn.boundary[l], pbc)
-        fill_ghost_interp!(u, conn.refboundary[l])
+        fill_ghost_interp!(u, conn.refboundary[l], poisson_ghost_interp)
         fill_ghost_free!(u, freebnd, tree, l)
     end
     
@@ -390,7 +395,7 @@ Perform a single step of the time integration.
 function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
                t, tmax, stepper::Val{:ssprk3}) where {T, K}
     (;dn, n, n1, maxdt) = fld
-    (;dt_safety_factor, fbc, densinterp) = conf
+    (;dt_safety_factor, fbc, dens_ghost_interp) = conf
 
     maxdt .= typemax(eltype(maxdt))
     
@@ -424,7 +429,7 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
     for s in 1:K
         restrict_full!(n[s], conn)
         for l in 1:length(tree)
-            fill_ghost!(n[s], l, conn, fbc, densinterp)
+            fill_ghost!(n[s], l, conn, fbc, dens_ghost_interp)
         end
     end
         
