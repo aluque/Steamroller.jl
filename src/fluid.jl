@@ -94,6 +94,33 @@ Compute electron fluxes.
 end
 
 
+# The WENO5 finite-volume reconstruction for conservation laws and cell averages (Jiang & Shu 1996)
+# cell averages. Rows of WENO_C: the three 3-cell candidate stencils; WENO_GAMMA: linear weights.
+const WENO_C = @SMatrix [1/3  -7/6  11/6   0     0;
+                         0    -1/6   5/6   1/3   0;
+                         0     0     1/3   5/6  -1/6]
+const WENO_GAMMA = @SVector [1/10, 6/10, 3/10]
+
+
+"""
+WENO5 reconstruction of the interface value from the five cell averages `uu`,
+ordered upwind -> downwind.
+"""
+@inline function weno5(uu::SVector{5, T}) where {T}
+    # Normalize so that ϵ is scale-free and an all-zero stencil gives 0, not 0/0.
+    s = maximum(abs, uu)
+    iszero(s) && return zero(T)
+    u = uu / s
+
+    β = @SVector [13/12 * (u[1] - 2u[2] + u[3])^2 + 1/4 * (u[1] - 4u[2] + 3u[3])^2,
+                  13/12 * (u[2] - 2u[3] + u[4])^2 + 1/4 * (u[2] - u[4])^2,
+                  13/12 * (u[3] - 2u[4] + u[5])^2 + 1/4 * (3u[3] - 4u[4] + u[5])^2]
+    α = WENO_GAMMA ./ (T(1e-6) .+ β).^2
+
+    return s * dot(α, WENO_C * u) / sum(α)
+end
+
+
 """
 Compute electron fluxes.
 """
@@ -103,9 +130,11 @@ Compute electron fluxes.
                         e::VectorBlockField{D, M, G},
                         eabs::ScalarBlockField{D, M, G},
                         h, trans, dens, maxdt) where {D, M, G}
+    isleaf(tree, level, blkpos) || return
+
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
-    @assert G > 2
+    @assert G >= 3
     maxdt[blk] = Inf
     
     for d in 1:D
@@ -124,34 +153,12 @@ Compute electron fluxes.
             v = -ed * μ
             sv = signbit(v) ? -1 : 1
             
-            # We take five cells: three upstream and two downstream of the interface
-            stencil = @SVector([I[d] + div(-5sv - 1, 2),
-                                I[d] + div(-3sv - 1, 2),
-                                I[d] + div(-sv - 1, 2),
-                                I[d] + div(sv - 1, 2),
-                                I[d] + div(3sv - 1, 2)])
-            S = ntuple(j -> Base.setindex(I, stencil[j], d), Val(5))
-            uu = SVector(ntuple(j -> ne[S[j], blk], Val(5)))
+            # Five cells from the most upwind to the most downwind of the interface I-1/2.
+            # The first upwind cell is I-1 if v > 0 and I if v < 0.
+            iu = I[d] - (sv + 1) ÷ 2
+            uu = SVector(ntuple(j -> ne[Base.setindex(I, iu + sv * (j - 3), d), blk], Val(5)))
 
-            u1 = dot(uu, @SVector [3//8, -5//4, 15//8, 0, 0])
-            u2 = dot(uu, @SVector [0, -1//8, 3//4, 3//8, 0])
-            u3 = dot(uu, @SVector [0, 0, 3//8, 3//4, -1//8])
-            
-            β1 = (4 * uu[1]^2 - 19 * uu[1] * uu[2] + 25 * uu[2]^2 + 11 * uu[1] * uu[3]
-                  - 31 * uu[2] * uu[3] + 10 * uu[3]^2) / 3
-            β2 = (4 * uu[2]^2 - 13 * uu[2] * uu[3] + 13 * uu[3]^2 + 5 * uu[2] * uu[4] - 13 * uu[3] * uu[4]
-                  + 4 * uu[4]^2) / 3
-            β3 = (10 * uu[3]^2 - 31 * uu[3] * uu[4] + 25 * uu[4]^2 + 11 * uu[3] * uu[5] - 19 * uu[4] * uu[5]
-                  + 4 * uu[5]^2) / 3
-            β = @SVector [β1, β2, β3]
-            γ = @SVector [1//16, 5//8, 5//16]
-            ϵ = 1e-6 * maximum(uu)^2
-            
-            w1 = @. γ / (ϵ + β)^2
-            w = w1 ./ sum(w1) 
-            uhalf = dot(w, @SVector [u1, u2, u3])
-            
-            F = v * uhalf
+            F = v * weno5(uu)
             
             # Consider only the advective flux for the computation of the Maxwell relax time
             tmaxwell = (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
