@@ -555,7 +555,7 @@ end
 Copies all blocks in the `layer` from `src` to `dest`
 """
 function copyto!(dest, src, layer::BlockLayer)
-    @batch for (_, blk) in layer.pairs
+    @pbatch for (_, blk) in layer.pairs
         b1 = dest[blk]
         b2 = src[blk]
         @turbo b1 .= b2
@@ -567,7 +567,7 @@ end
 Writes into `dest` the difference `a1` - `a2`.
 """
 function diffto!(dest, a1, a2, layer::BlockLayer)
-    @batch for (_, blk) in layer.pairs
+    @pbatch for (_, blk) in layer.pairs
         destblk = dest[blk]
         a1blk = a1[blk]
         a2blk = a2[blk]

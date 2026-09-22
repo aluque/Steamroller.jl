@@ -164,7 +164,7 @@ Fill ghost cells by copying neighboring cells in the same layer.
 `v` contains a vector with `Neighbor` relations.
 """
 function fill_ghost_copy!(u::ScalarBlockField{D, M, G}, v::Vector{Neighbor{D}}) where {D, M, G}
-    @batch for edge in v
+    @pbatch for edge in v
         @inline _fill_ghost_copy!(u, edge)
     end
 end
@@ -204,16 +204,27 @@ boundary conditions specified by `bc`
 """
 function fill_ghost_bnd!(u::ScalarBlockField{D}, v::Vector{Boundary{D}},
                          bc::HomogeneousBoundaryConditions) where {D}
-    @batch for link in v
-        ghost = ghostindices(u, link.face)
-        valid = mirrorghost(u, ghost, link.bnd)
-        
+    @pbatch for link in v
+        @inline _fill_ghost_bnd!(u, link, bcfactor(bc, link.bnd))
+    end
+end
+
+#=
+The ghost region is set by `link.face`; the source cell is mirrored (see `mirrorghost`) only
+in the dimensions where `link.bnd` is nonzero.  For diagonal faces the source may therefore
+be a ghost cell filled previously by a neighbor.
+=#
+@generated function _fill_ghost_bnd!(u::ScalarBlockField{D, M, G}, link::Boundary{D},
+                                     factor) where {D, M, G}
+    quote
+        f = link.face
+        b = link.bnd
         ublk = u[link.block]
-        CI = CartesianIndices(ghost)
-        
-        for I in CI
-            # I1 = __mirrorindex(I, CI, link.bnd)
-            ublk[ghost[I]] = getbc(bc, link.bnd, ublk[valid[I]])
+
+        @nloops $D i d->(f[d] == 0 ? (G + 1:G + M) : (f[d] == -1 ? (1:G) : (M + G + 1:M + 2G))) begin
+            isrc = @ntuple $D d->(b[d] == 0 ? i_d :
+                                  (b[d] == -1 ? 2G - i_d + 1 : 2 * (G + M) - i_d + 1))
+            @inbounds ublk[(@ntuple $D i)...] = factor * ublk[isrc...]
         end
     end
 end
@@ -237,7 +248,7 @@ Fill ghost cells by interpolating from parent blocks at refinement
 boundaries.
 """
 function fill_ghost_interp!(u::ScalarBlockField{D}, v::Vector{RefBoundary{D}}, method=InterpLinear()) where {D}
-    @batch for edge in v
+    @pbatch for edge in v
         src = u[edge.coarse]
         dest = u[edge.fine]
         interp!(method, dest, ghostindices(u, edge.face),

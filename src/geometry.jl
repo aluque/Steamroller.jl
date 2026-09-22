@@ -16,8 +16,49 @@ struct CartesianGeometry <: AbstractGeometry end
 factorexpr(::CartesianGeometry, c, d) = 1
 
 
-# For performance we store the cylindrical dimension in a type parameters
-struct CylindricalGeometry{D} <: AbstractGeometry end
+"""
+Number of radial cells covered by the coefficient tables of `CylindricalGeometry{D}()`.
+"""
+const DEFAULT_CYLINDRICAL_CELLS = 1 << 18
+
+"""
+Cylindrical geometry with radial dimension `D` (stored as a type parameter for performance).
+
+The coefficients of the 2nd-order radial stencil are tabulated by global radial cell index `i`
+(starting at 1 on the axis) to avoid two divisions per cell and sweep.  The tables cover
+`n` radial cells; use `n = rootsize[D] * M * 2^(maxlevel - 1)`.  They are `Float64` for any
+field type, as the divisions of `Int`s they replace.
+"""
+struct CylindricalGeometry{D} <: AbstractGeometry
+    "(2i - 2) / (2i - 1): coefficient of the neighbor towards the axis"
+    cm::Vector{Float64}
+
+    "2i / (2i - 1): coefficient of the neighbor away from the axis"
+    cp::Vector{Float64}
+
+    function CylindricalGeometry{D}(n::Integer=DEFAULT_CYLINDRICAL_CELLS) where D
+        new{D}([(2i - 2) / (2i - 1) for i in 1:n], [2i / (2i - 1) for i in 1:n])
+    end
+end
+
+
+"""
+Coefficients `((2i - 2) / (2i - 1), 2i / (2i - 1))` of global radial cell index `i`.
+Callers that read them inside `@inbounds` must check the whole block first with `checkblock`.
+"""
+@propagate_inbounds function radialcoeffs(geom::CylindricalGeometry, i)
+    @boundscheck checkbounds(geom.cm, i)
+    return @inbounds (geom.cm[i], geom.cp[i])
+end
+
+
+"""
+Throw a `BoundsError` unless the tables of `geom` cover all valid cells of the block with
+first global cell `gbl0` and size `M`.  Kernels call this once per block before the `@inbounds`
+cell loop that evaluates stencils.
+"""
+checkblock(::AbstractGeometry, gbl0, M) = nothing
+checkblock(geom::CylindricalGeometry{D}, gbl0, M) where D = checkbounds(geom.cm, gbl0[D]:(gbl0[D] + M - 1))
 
 
 """

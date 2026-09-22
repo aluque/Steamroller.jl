@@ -15,6 +15,20 @@ macro tbatch(ex)
 end
 
 """
+Minimal number of iterations per thread in `@pbatch` loops.  Loops with fewer than
+`2 * MINBATCH` iterations run on the calling thread, which avoids the cost of a threaded launch
+for the many short loops over blocks or edges of a level.
+"""
+const MINBATCH = 8
+
+"""
+Equivalent to `Polyester.@batch minbatch=MINBATCH per=core`.
+"""
+macro pbatch(ex)
+    esc(:(Polyester.@batch minbatch=$MINBATCH per=core $ex))
+end
+
+"""
 Iterate in parallel over all blocks at all levels in a tree.
 
 This macro must prefix a for loop as, for example
@@ -88,7 +102,7 @@ function deepfirst(vars, tree, body, parallel=true)
         end)
     
     if parallel
-        inner = macroexpand(@__MODULE__, :(Polyester.@batch(per=core, $inner)))
+        inner = macroexpand(@__MODULE__, :(Polyester.@batch(minbatch=$MINBATCH, per=core, $inner)))
     end
     
     outer = quote
@@ -109,7 +123,7 @@ function flat(vars, tree, body)
              ($symlevel, $symcoord, $symindex) = nth($tree, $i)
              $body
              end)
-    bloop = macroexpand(@__MODULE__, :(Polyester.@batch(per=core, $loop)))
+    bloop = macroexpand(@__MODULE__, :(Polyester.@batch(minbatch=$MINBATCH, per=core, $loop)))
     
     return bloop
 end

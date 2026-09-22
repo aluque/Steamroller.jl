@@ -195,7 +195,7 @@ The result is stored in `m` as true/false.
 
     # Perhaps we should find a way to stop working once we have found a positive cell
     # the problem is how to match this with the spilling.
-    for I in localindices(m)
+    @inbounds for I in localindices(m)
         if !compatible(ref, (lvl, coord, blk), I, h, t)
             m[addghost(m, I), blk] = 1
         else
@@ -337,6 +337,7 @@ Apply to `tree` the refinement delta indicated by `refdelta`.
 `freeblocks` is a list of availabe free blocks (which may be modified by this function).
 """
 function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel, dens_interp)
+    changed = false
     @blocks order=serial for (lvl, coord, blk) in tree
         lvl > 1 || continue
         isleaf(tree, lvl, coord) || continue        
@@ -349,6 +350,7 @@ function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel, den
             delete!(tree[lvl], coord)
             delete!(tree[lvl], blk)
             push!(freeblocks, blk)
+            changed = true
 
         elseif refdelta[blk][] == REFINE && lvl < maxlevel
             for c in subblocks(coord)
@@ -363,8 +365,10 @@ function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel, den
                 # pseudo-code
                 interp!(fields, nblk, blk, subcoord(c), dens_interp)                
             end
+            changed = true
         end
     end
 
     sync!(tree)
+    return changed
 end

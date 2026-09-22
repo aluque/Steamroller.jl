@@ -65,11 +65,14 @@ function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::Streame
     (nup, ndown, ntop) = poisson_level_iter
     dim = _perpdim(fr)
 
-    for i in 1:poisson_iter
-        for l in 1:length(tree)
-            fill_ghost!(uh, l, conn, pbc, poisson_ghost_interp)
-        end
+    lmax = finestlevel(tree)::Int
 
+    # After a vcycle! the ghosts of uh are up to date at all levels.
+    for l in 1:lmax
+        fill_ghost!(uh, l, conn, pbc, poisson_ghost_interp)
+    end
+
+    for i in 1:poisson_iter
         if poisson_fmg
             fmg!(uh, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
                  tree, conn, geom, pbc, lpl; nup, ndown, ntop, ghost=poisson_ghost_interp)

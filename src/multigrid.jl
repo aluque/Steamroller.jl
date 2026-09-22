@@ -26,11 +26,10 @@ function fmg!(u, b, r, u1, s,
         restrict_level!(u, conn.child[l])
         fill_ghost!(u, l - 1, conn, bc, ghost)
 
+        # The ghosts of r are never read: restrict! reads only valid cells and
+        # residual_postrestrict_level! reads r only at valid cells.
         residual_level!(r, u, b, sl, tree[l], lpldisc, geometry)
-        fill_ghost!(r, l, conn, bc, ghost)
-
         restrict_level!(r, conn.child[l])
-        fill_ghost!(r, l - 1, conn, bc, ghost)
 
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)
@@ -65,7 +64,17 @@ function vcycle!(u, b, r, u1, s,
                  tree, conn, geometry, bc, lpldisc;
                  lmax=0, ndown=3, ntop=5, nup=3,
                  ω=1.0, ghost=InterpLinear())
-    (lmax == 0) && (lmax = length(tree))
+    if lmax == 0
+        lmax = finestlevel(tree)::Int
+
+        #=
+        With a BoxStencil the boundary fill of a diagonal face reads refinement-boundary ghosts,
+        which fill_ghost! writes after it, so a single fill can leave corner ghosts stale (or
+        uninitialized in new blocks).  The earlier default lmax = length(tree) refilled the
+        finest level through the empty level lmax + 1; this keeps that second fill.
+        =#
+        fill_ghost!(u, lmax, conn, bc, ghost)
+    end
 
     # The "descending" side of the V
     for l in lmax:-1:2
@@ -80,11 +89,10 @@ function vcycle!(u, b, r, u1, s,
 
         copyto!(u1, u, tree[l - 1])
 
+        # The ghosts of r are never read: restrict! reads only valid cells and
+        # residual_postrestrict_level! reads r only at valid cells.
         residual_level!(r, u, b, sl, tree[l], lpldisc, geometry)
-        fill_ghost!(r, l, conn, bc, ghost)
-
         restrict_level!(r, conn.child[l])
-        fill_ghost!(r, l - 1, conn, bc, ghost)
 
         residual_postrestrict_level!(b, u, r, 4sl, tree[l - 1],
                                      conn.child[l], geometry, lpldisc)
@@ -103,9 +111,9 @@ function vcycle!(u, b, r, u1, s,
         interp_add_level!(u, u1, conn.child[l])
         fill_ghost!(u, l, conn, bc, ghost)
 
+        # This leaves all ghosts of u at level l up to date: gauss_seidel_iter! ends with copy
+        # and boundary fills and the refinement-boundary ghosts depend only on level l - 1.
         gauss_seidel_iter!(u, b, ω, sl, nup, l, tree, conn, geometry, bc, lpldisc)
-
-        fill_ghost!(u, l, conn, bc, ghost)
     end
 end
 
@@ -114,7 +122,7 @@ end
 Compute residuals in the subblocks that have been updated with a restriction.
 """
 function residual_postrestrict_level!(r, u, b, s, layer, v, geometry, lpldisc)
-    @batch for edge in v
+    @pbatch for edge in v
         blk = edge.coarse
         blkpos = layer.coord[blk]
         residual_subblock!(r, u, b, s, blkpos, edge.coarse,
@@ -161,8 +169,12 @@ Apply Red-black Gauss-Seidel in a block.
     D1 = D - 1
     quote
         gbl0 = global_first(blkpos, $M)
+        checkblock(geom, gbl0, $M)
+        ublk = u[blk]
+        bblk = b[blk]
+
         # Index 1 steps in strides of 2; all other indices have strides of one
-        @nloops $D i d->(d == 1 ? ((G + 1):2:(G + M)) : ((G + 1):(G + M))) begin
+        @inbounds @nloops $D i d->(d == 1 ? ((G + 1):2:(G + M)) : ((G + 1):(G + M))) begin
             # Compute parity of P combined with indices 2, 3...
             p = $P
             @nexprs $D1 d->(p = xor(p, i_{d+1} & 1))
@@ -174,11 +186,11 @@ Apply Red-black Gauss-Seidel in a block.
             J = CartesianIndex(@ntuple $D d->(I[d] - G + gbl0[d] - 1))
 
             c = diagelm(s, ld, geom, Val(:lhs), J)            
-            Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
+            Lu = applystencil(ublk, s, I, J, ld, geom, Val(:lhs))
             
             #u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
-            v = muladd(s, b[I, blk], Lu)
-            u[I, blk] = muladd(-(ω / c), v, u[I, blk])
+            v = muladd(s, bblk[I], Lu)
+            ublk[I] = muladd(-(ω / c), v, ublk[I])
         end
     end
 end
@@ -215,8 +227,11 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
     
     hinds = CartesianIndices(ntuple(d -> d <= 2 ? validrange2(u) : validrange(u),
                                     Val(D)))
+    checkblock(geom, gbl0, M)
+    ublk = u[blk]
+    bblk = b[blk]
 
-    for I1 in hinds
+    @inbounds for I1 in hinds
         p1 = P1
         p2 = P2
         if D == 3
@@ -229,9 +244,9 @@ function gauss_seidel!(u::ScalarBlockField{D, M, G},
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         c = diagelm(s, ld, geom, Val(:lhs), J)
         
-        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(ublk, s, I, J, ld, geom, Val(:lhs))
 
-        u[I, blk] -= ω * (Lu + s * b[I, blk]) / c
+        ublk[I] -= ω * (Lu + s * bblk[I]) / c
     end
 end
 
@@ -240,7 +255,7 @@ end
 Apply Gauss-Seidel to all blocks in a layer. 
 """
 function gauss_seidel_level!(u, b, ω, s, layer, ld, geometry, parity)
-    @batch for i in eachindex(layer.pairs)
+    @pbatch for i in eachindex(layer.pairs)
         (coord, blk) = layer.pairs[i]
         gauss_seidel!(u, b, ω, s, coord, blk, ld, geometry, parity)
     end
@@ -316,13 +331,15 @@ function residual!(r::ScalarBlockField{D, M, G},
                    ld::AbstractDiscretization{D},
                    geom::GT) where {D, M, G, GT}
     gbl0 = global_first(blkpos, M)
+    checkblock(geom, gbl0, M)
+    rblk, ublk, bblk = r[blk], u[blk], b[blk]
     
-    for I in CartesianIndices(ntuple(d -> validrange(r), Val(D)))
+    @inbounds for I in CartesianIndices(ntuple(d -> validrange(r), Val(D)))
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(ublk, s, I, J, ld, geom, Val(:lhs))
 
-        r[I, blk] = -(b[I, blk] + Lu / s)
+        rblk[I] = -(bblk[I] + Lu / s)
     end
 end
 
@@ -337,13 +354,15 @@ function residual_subblock!(r::ScalarBlockField{D, M, G},
                             b::ScalarBlockField{D, M, G}, s, blkpos, blk,
                             geom, ld::AbstractDiscretization{D}, subblock) where {D, M, G}
     gbl0 = global_first(blkpos, M)
+    checkblock(geom, gbl0, M)
+    rblk, ublk, bblk = r[blk], u[blk], b[blk]
     
-    for I in subblockindices(r, subblock)
+    @inbounds for I in subblockindices(r, subblock)
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
-        Lu = applystencil(u[blk], s, I, J, ld, geom, Val(:lhs))
+        Lu = applystencil(ublk, s, I, J, ld, geom, Val(:lhs))
 
-        r[I, blk] = -(b[I, blk] + Lu / s)
+        rblk[I] = -(bblk[I] + Lu / s)
     end
 end
 
@@ -351,7 +370,7 @@ end
 Compute residuals for all blocks in a layer. 
 """
 function residual_level!(r, u, b, s, layer, lpldisc, geometry)
-    @batch for i in eachindex(layer.pairs)
+    @pbatch for i in eachindex(layer.pairs)
         (coord, blk) = layer.pairs[i]
         residual!(r, u, b, s, coord, blk, lpldisc, geometry)
     end
@@ -370,13 +389,15 @@ function rhs!(b1::ScalarBlockField{D, M, G},
               ld::AbstractDiscretization{D},
               geom::GT) where {D, M, G, GT}
     gbl0 = global_first(blkpos, M)
+    checkblock(geom, gbl0, M)
+    b1blk, bblk = b1[blk], b[blk]
     
-    for I in CartesianIndices(ntuple(d -> validrange(b1), Val(D)))
+    @inbounds for I in CartesianIndices(ntuple(d -> validrange(b1), Val(D)))
         J = CartesianIndex(ntuple(d -> I[d] - G + gbl0[d] - 1, Val(D)))
         
         # s = nothing here bc it is ignored
-        Rb = applystencil(b[blk], nothing, I, J, ld, geom, Val(:rhs))
-        b1[I, blk] = Rb
+        Rb = applystencil(bblk, nothing, I, J, ld, geom, Val(:rhs))
+        b1blk[I] = Rb
     end
 end
 
@@ -385,7 +406,7 @@ end
 Compute rhs for all blocks in a layer. 
 """
 function rhs_level!(b1, b, layer, ld, geometry)
-    @batch for i in eachindex(layer.pairs)
+    @pbatch for i in eachindex(layer.pairs)
         (coord, blk) = layer.pairs[i]
         rhs!(b1, b, coord, blk, ld, geometry)
     end
@@ -430,7 +451,7 @@ end
     gbl0 = global_first(coord, M)
     h /= (1 << (level - 1))
     
-    for d in 1:D
+    @inbounds for d in 1:D
         for I in validindices(f, d)
             x = SVector(ntuple(d1 -> h * (I[d1] - G + gbl0[d1] - 1) - ((d == d1) ? h : h/2), Val(D)))
             e0 = efunc(x, t)
@@ -439,7 +460,7 @@ end
         end
     end
     
-    for I in validindices(fabs)
+    @inbounds for I in validindices(fabs)
         f2 = zero(eltype(fabs))
         for d in 1:D
             I1 = Base.setindex(I, I[d] + 1, d)

@@ -9,8 +9,8 @@ The support for inhomogeneous boundary conditions is currently limited to its us
 
 abstract type HomogeneousBoundaryConditions; end
 
-struct GeneralHomogeneousBoundaryConditions{D} <: HomogeneousBoundaryConditions
-    a::SArray{NTuple{D, 3}, Int8}
+struct GeneralHomogeneousBoundaryConditions{D, L} <: HomogeneousBoundaryConditions
+    a::SArray{NTuple{D, 3}, Int8, D, L}
 end
 
 
@@ -47,3 +47,15 @@ function getbc(bc::GeneralHomogeneousBoundaryConditions{D}, face::CartesianIndex
 end
 
 getbc(::ExtrapolateConst, face, uclose) = uclose
+
+
+"""
+Factor (+1/-1) that multiplies the value of the mirrored cell to obtain a ghost cell at
+boundary `bnd`.
+"""
+@inline function bcfactor(bc::GeneralHomogeneousBoundaryConditions{D},
+                          bnd::CartesianIndex{D}) where D
+    return bc.a[ntuple(d -> 2 + bnd[d], Val(D))...]
+end
+
+@inline bcfactor(::ExtrapolateConst, bnd) = one(Int8)

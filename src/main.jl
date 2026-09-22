@@ -319,7 +319,8 @@ function _main(input::InputParameters{T}) where T
 
     # Geometry of the problem and discretization for the Poisson equation.
     # CylindricalGeometry{d} indicates that d is treated as the radial coordinate
-    geom = (D == 2 ? CylindricalGeometry{1}() : CartesianGeometry())    
+    geom = (D == 2 ? CylindricalGeometry{1}(input.rootsize[1] * M * (1 << (refine_maxlevel - 1))) :
+            CartesianGeometry())
     lpl = LaplacianDiscretization{D, input.poisson_order}()
 
     stencil = (input.poisson_order == 2 ? StarStencil{D}() :

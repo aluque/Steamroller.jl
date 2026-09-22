@@ -107,7 +107,7 @@ nspecies(::StreamerFields{T, K}) where {T, K} = K
 """
 Build an `SVector` with all species at a given grid point.
 """
-function species(n::SVector{K}, I, blk) where {K}
+@propagate_inbounds function species(n::SVector{K}, I, blk) where {K}
     SVector{K}(ntuple(i -> n[i][I, blk], Val(K)))
 end
 
@@ -327,24 +327,27 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     (;poisson_fmg, poisson_iter, poisson_level_iter) = conf
     (;dens_ghost_interp, poisson_ghost_interp, charge_ghost_interp) = conf
     (nup, ndown, ntop) = poisson_level_iter
+    lmax = finestlevel(tree)::Int
     
     netcharge!(tree, q, ni, chem)
 
     # This is only needed for higher-order discretization so one can save a bit of time
     # by not doing this restriction always.
     restrict_full!(q, conn)
-    for l in 1:length(tree)
-        fill_ghost!(q, l, conn, pbc, charge_ghost_interp)
+    for l in 1:lmax
+        rhs_reads_ghosts(lpl) && fill_ghost!(q, l, conn, pbc, charge_ghost_interp)
         rhs_level!(q1, q, tree[l], lpl, geom)
     end
 
     setfreebc!(freebnd, pbc, fld, conf, tree, conn)
     
-    for i in 1:poisson_iter
-        for l in 1:length(tree)
-            fill_ghost!(u, l, conn, pbc, poisson_ghost_interp)
-        end
+    # After a vcycle! the ghosts of u are up to date at all levels, so they are filled only
+    # before the first iteration.
+    for l in 1:lmax
+        fill_ghost!(u, l, conn, pbc, poisson_ghost_interp)
+    end
 
+    for i in 1:poisson_iter
         if poisson_fmg
             fmg!(u, q1, r, u1, h^2 * convert(T, co.elementary_charge / co.epsilon_0),
                  tree, conn, geom, pbc, lpl; nup, ndown, ntop, ghost=poisson_ghost_interp)
@@ -358,20 +361,26 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     ne = ni[1]
     restrict_full!(ne, conn)
 
-    for l in 1:length(tree)
+    # Without free b.c. the solver has left the ghosts of u up to date.  With them the ghosts
+    # are corrected level by level, which also feeds the interpolation into finer levels.
+    refill_u = !isnothing(freebnd) || poisson_iter == 0
+
+    for l in 1:lmax
         fill_ghost_copy!(ne, conn.neighbor[l])
         fill_ghost_bnd!(ne, conn.boundary[l], fbc)
         fill_ghost_interp!(ne, conn.refboundary[l], dens_ghost_interp)
 
-        fill_ghost_copy!(u, conn.neighbor[l])
-        fill_ghost_bnd!(u, conn.boundary[l], pbc)
-        fill_ghost_interp!(u, conn.refboundary[l], poisson_ghost_interp)
-        fill_ghost_free!(u, freebnd, tree, l)
+        if refill_u
+            fill_ghost_copy!(u, conn.neighbor[l])
+            fill_ghost_bnd!(u, conn.boundary[l], pbc)
+            fill_ghost_interp!(u, conn.refboundary[l], poisson_ghost_interp)
+            fill_ghost_free!(u, freebnd, tree, l)
+        end
     end
     
     electric_field!(tree, e, eabs, u, h, t, eb)
     
-    for l in 1:length(tree)
+    for l in 1:lmax
         fill_ghost!(eabs, l, conn, ExtrapolateConst())
     end
     
@@ -379,16 +388,30 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     flux!(tree, fluxschem, flux, ne, e, eabs, h, trans, dens, maxdt)
     restrict_flux!(flux, conn)
 
-    chemderivs!(tree, dni, ni, eabs, h, chem, dens, Val{:pre}(), Val{true}())    
-    # Here goes photo-ionization
-    photoionization!(tree, dni, photo, r, u1, phmodel, h, conn, geom)
-    chemderivs!(tree, dni, ni, eabs, h, chem, dens, Val{:post}(), Val{false}())
+    chemphotoderivs!(tree, dni, ni, eabs, h, chem, dens, phmodel, photo, r, u1, conn, geom)
     fluxderivs!(tree, dni[1], flux, h, geom)
 end
 
 
+"""
+Initialize `dni` with the chemistry and photo-ionization derivatives.  The photo-ionization
+sources are the derivatives computed before photo-ionization (`Val{:pre}()`).
+"""
+function chemphotoderivs!(tree, dni, ni, eabs, h, chem, dens, phmodel, photo, r, u1, conn, geom)
+    chemderivs!(tree, dni, ni, eabs, h, chem, dens, Val{:pre}(), Val{true}())
+    photoionization!(tree, dni, photo, r, u1, phmodel, h, conn, geom)
+    chemderivs!(tree, dni, ni, eabs, h, chem, dens, Val{:post}(), Val{false}())
+end
+
+# Without photo-ionization fields nothing happens between the two chemistry passes.
+function chemphotoderivs!(tree, dni, ni, eabs, h, chem, dens,
+                          phmodel::FluidPhotoionizationModel{0}, photo, r, u1, conn, geom)
+    chemderivs_prepost!(tree, dni, ni, eabs, h, chem, dens)
+end
+
+
 @bkernel function netcharge!((tree, level, blkpos, blk), q, n, chem)
-    for I in validindices(n[1])
+    @inbounds for I in validindices(n[1])
         q[I, blk] = netcharge(chem, species(n, I, blk))
     end
 end
@@ -438,9 +461,10 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
     setmcphotosrc!(conf.phmodel, fld, dt, stepper)
     mcphoto!(tree, conf.phmodel, fld, conf.h, conf.geom)
     
+    lmax = finestlevel(tree)::Int
     for s in 1:K
         restrict_full!(n[s], conn)
-        for l in 1:length(tree)
+        for l in 1:lmax
             fill_ghost!(n[s], l, conn, fbc, dens_ghost_interp)
         end
     end
@@ -449,8 +473,13 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
 end
 
 
+"""
+Refine and derefine the tree according to the refinement criterium (`conf.ref` unless `ref`
+is given).  Pass `fill_ghosts=false` if the density ghosts are already up to date (as they are
+after `step!`).  Returns `true` if any block was added or removed.
+"""
 function refine!(fields::StreamerFields, conf::StreamerConf{T}, tree, conn, t, dt;
-                 minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T}
+                 minlevel=1, maxlevel=typemax(Int), ref=nothing, fill_ghosts=true) where {T}
     (;m, refdelta, n, freeblocks) = fields
     (;h, fbc, freebnd, dens_ghost_interp, dens_refine_interp) = conf
 
@@ -460,14 +489,16 @@ function refine!(fields::StreamerFields, conf::StreamerConf{T}, tree, conn, t, d
     fill_ghost_copy!(m, conn)
     refdelta!(tree, refdelta, m, BoxStencil{dimension(m)}())
 
-    for ni in n
-        fill_ghost_copy!(ni, conn)
-        fill_ghost_bnd!(ni, conn, fbc)
-        fill_ghost_interp!(ni, conn, dens_ghost_interp)
+    if fill_ghosts
+        for ni in n
+            fill_ghost_copy!(ni, conn)
+            fill_ghost_bnd!(ni, conn, fbc)
+            fill_ghost_interp!(ni, conn, dens_ghost_interp)
+        end
     end
         
-    applydelta!(tree, refdelta, freeblocks, (fields, freebnd), minlevel, maxlevel,
-                dens_refine_interp)
+    return applydelta!(tree, refdelta, freeblocks, (fields, freebnd), minlevel, maxlevel,
+                       dens_refine_interp)
 end
 
 """
@@ -568,9 +599,12 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 end
                 
                 if (iter % refine_every) == 0
-                    elapsed_refine += @elapsed refine!(fields, conf, tree, conn, t, dt;
-                                                       minlevel=derefine_minlevel, maxlevel=refine_maxlevel)
-                    elapsed_connectivity += @elapsed connectivity!(conn, tree, stencil)
+                    # step! has just filled the density ghosts.
+                    elapsed_refine += @elapsed (changed = refine!(fields, conf, tree, conn, t, dt;
+                                                                  minlevel=derefine_minlevel,
+                                                                  maxlevel=refine_maxlevel,
+                                                                  fill_ghosts=false))
+                    changed && (elapsed_connectivity += @elapsed connectivity!(conn, tree, stencil))
                 end
                 
                 

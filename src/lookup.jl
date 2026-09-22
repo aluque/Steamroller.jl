@@ -40,8 +40,8 @@ end
         return (1, zero(promote_type(eltype(tbl.fx), typeof(fx))))
     end
     
-    @boundscheck checkbounds(tbl.fx, i)
-    @boundscheck checkbounds(tbl.fx, i + 1)
+    # Explicit check (not @boundscheck): x above the table must raise even inside @inbounds.
+    i + 1 > length(tbl.fx) && throw(BoundsError(tbl.fx, i + 1))
     
     @inbounds w = (fx - tbl.fx[i]) / (tbl.fx[i + 1] - tbl.fx[i])
     return (i, w)

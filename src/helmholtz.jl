@@ -14,7 +14,7 @@ end
 #  2D STENCILS
 ##
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               helm::HelmholtzDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -24,7 +24,7 @@ end
                              0         1  0]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::HelmholtzDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
@@ -34,29 +34,29 @@ end
 @inline diagelm(s, helm::HelmholtzDiscretization{2, 2},
                 ::CartesianGeometry, ::Val{:lhs}, J) = -4 - s * helm.k2
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               helm::HelmholtzDiscretization{2, 2},
-                              ::CylindricalGeometry{1},
+                              geom::CylindricalGeometry{1},
                               ::Val{:lhs})
-    i = J[1]
+    (cm, cp) = radialcoeffs(geom, J[1])
     (;k2) = helm
-    @fastmath @stencil u[I] [0      (2i - 2) / (2i - 1)  0;
-                             1            (-4 - s * k2)  1;
-                             0            2i / (2i - 1)  0]
+    @fastmath @stencil u[I] [0             cm  0;
+                             1  (-4 - s * k2)  1;
+                             0             cp  0]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               helm::HelmholtzDiscretization{2, 2},
-                              ::CylindricalGeometry{2},
+                              geom::CylindricalGeometry{2},
                               ::Val{:lhs})
-    i = J[2]
+    (cm, cp) = radialcoeffs(geom, J[2])
     (;k2) = helm
-    @fastmath @stencil u[I] [0                                 1                0;
-                             ((2i - 2) / (2i - 1)) (-4 - s * k2)  (2i / (2i - 1));
-                             0                                 1                0]
+    @fastmath @stencil u[I] [0              1  0;
+                             cm (-4 - s * k2)  cp;
+                             0              1  0]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::HelmholtzDiscretization{2, 2},
                               ::CylindricalGeometry,
                               ::Val{:rhs})
@@ -71,7 +71,7 @@ end
 #  3D STENCILS
 ##
 
-@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               helm::HelmholtzDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -89,7 +89,7 @@ end
                               0   0   0]]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::HelmholtzDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})

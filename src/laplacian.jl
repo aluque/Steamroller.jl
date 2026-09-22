@@ -15,6 +15,13 @@ struct LaplacianDiscretization{D,P} <: AbstractDiscretization{D, P}; end
 
 
 """
+Whether the rhs operator of discretization `ld` reads ghost cells.  At 2nd order the rhs
+operator is the identity.
+"""
+rhs_reads_ghosts(::AbstractDiscretization{D, P}) where {D, P} = P > 2
+
+
+"""
 Build an expression that applies a static stencil.
 
 `expr1` is a reference espression such as `u[I]`, `expr2` is the stencil
@@ -69,13 +76,16 @@ end
 #= 
 Note: All the stencils defined here ignore the input `s`, which is only required for helmholtz
 discretizations.
+
+`applystencil` methods are `@propagate_inbounds` so that the `@inbounds` of the calling cell loop
+also removes the bounds checks of the stencil reads.
 =#
 
 ##
 #  2D STENCILS
 ##
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -84,7 +94,7 @@ discretizations.
                               0  1  0]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
@@ -97,27 +107,27 @@ end
 
 ## CYLINDRICAL
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
-                              ::CylindricalGeometry{1},
+                              geom::CylindricalGeometry{1},
                               ::Val{:lhs})
-    i = J[1]
-     @fastmath @stencil u[I] [0  (2i - 2) / (2i - 1)  0;
-                              1                   -4  1;
-                              0         2i / (2i - 1) 0]
+    (cm, cp) = radialcoeffs(geom, J[1])
+     @fastmath @stencil u[I] [0  cm  0;
+                              1  -4  1;
+                              0  cp  0]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
-                              ::CylindricalGeometry{2},
+                              geom::CylindricalGeometry{2},
                               ::Val{:lhs})
-    i = J[2]
-     @fastmath @stencil u[I] [0                      1                0;
-                              ((2i - 2) / (2i - 1)) -4  (2i / (2i - 1));
-                              0                      1                0]
+    (cm, cp) = radialcoeffs(geom, J[2])
+     @fastmath @stencil u[I] [0   1  0;
+                              cm -4  cp;
+                              0   1  0]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 2},
                               ::CylindricalGeometry,
                               ::Val{:rhs})
@@ -130,7 +140,7 @@ end
 
 # COMPACT 4TH ORDER 2D CARTESIAN
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -139,7 +149,7 @@ end
                               1    4  1] 6
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CartesianGeometry,
                               ::Val{:rhs})
@@ -154,7 +164,7 @@ end
 
 # COMPACT 4TH ORDER 2D CYLINDRICAL
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{1},
                               ::Val{:lhs})
@@ -164,7 +174,7 @@ end
                              2i/(2i-1)            4*(1+i-8i^2+8i^3)/(2i-1)^3        2i/(2i-1)] 6
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{1},
                               ::Val{:rhs})
@@ -174,7 +184,7 @@ end
                               0       2i/(2i-1)  0] 12
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{2},
                               ::Val{:lhs})
@@ -184,7 +194,7 @@ end
                              2*(i-1)/(2i-1)                                        4          2i/(2i-1)] 6
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{2},
                               ::Val{:rhs})
@@ -275,7 +285,7 @@ end
 #  3D STENCILS
 ##
 
-@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -292,7 +302,7 @@ end
                                         0   0   0]]
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 2},
                               ::CartesianGeometry,
                               ::Val{:rhs})
@@ -302,7 +312,7 @@ end
 @inline diagelm(s, ::LaplacianDiscretization{3, 2},
                     ::CartesianGeometry, ::Val{:lhs}, J) = -6
 
-@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
                               ::Val{:lhs})
@@ -319,7 +329,7 @@ end
                                         0   1   0]] 6
 end
 
-@inline function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
+@propagate_inbounds function applystencil(u, s, I::CartesianIndex{3}, J::CartesianIndex{3},
                               ::LaplacianDiscretization{3, 4},
                               ::CartesianGeometry,
                               ::Val{:rhs})

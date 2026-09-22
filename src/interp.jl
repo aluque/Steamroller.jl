@@ -70,7 +70,7 @@ the value). Default is to overwrite.
         #                         Val(D))) "Incompatible sizes in interpolation"
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Is in CartesianIndices(isrc)
+        @inbounds for Is in CartesianIndices(isrc)
             Id0 = 2 * Is - oneunit(Is)
             Jd0 = idest[Id0]
             
@@ -117,7 +117,7 @@ the value). Default is to overwrite.
     quote
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Is in CartesianIndices(isrc)
+        @inbounds for Is in CartesianIndices(isrc)
             Id0 = 2 * Is - oneunit(Is)
             Jd0 = idest[Id0]
 
@@ -161,7 +161,7 @@ the value). Default is to overwrite.
     quote
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Is in CartesianIndices(isrc)
+        @inbounds for Is in CartesianIndices(isrc)
             Id0 = 2 * Is - oneunit(Is)
             Jd0 = idest[Id0]
 
@@ -207,7 +207,7 @@ the value). Default is to overwrite.
                             src::AbstractArray{T, D}, isrc::CartesianIndices{D},
                             func::B=_first) where {T, D, B}
     quote
-        for Is in CartesianIndices(isrc)
+        @inbounds for Is in CartesianIndices(isrc)
             Id0 = 2 * Is - oneunit(Is)
             Jd0 = idest[Id0]
 
@@ -252,7 +252,7 @@ end
     quote
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Is in CartesianIndices(isrc)
+        @inbounds for Is in CartesianIndices(isrc)
             Id0 = 2 * Is - oneunit(Is)
             Jd0 = idest[Id0]
             
@@ -276,7 +276,7 @@ interp!(dest::AbstractArray{T, D}, idest::CartesianIndices{D},
 Fill blocks at a given level with interpolations from their parent blocks.
 """
 function interp_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
-    @batch for edge in v
+    @pbatch for edge in v
         src = u[edge.coarse]
         dest = u[edge.fine]
         interp!(dest, validindices(u), src, subblockindices(u, edge.subblock))
@@ -288,7 +288,7 @@ Interpolate from u1 adding the result to u.
 """
 function interp_add_level!(u::ScalarBlockField{D}, u1::ScalarBlockField{D},
                            v::Vector{Child{D}}) where {D}
-    @batch for edge in v
+    @pbatch for edge in v
         src = u1[edge.coarse]
         dest = u[edge.fine]
         

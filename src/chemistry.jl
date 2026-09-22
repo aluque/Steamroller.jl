@@ -37,7 +37,7 @@ source for photo-ionization.
 
     gbl0 = global_first(blkpos, M, G)
 
-    for I in validindices(dn[1])
+    @inbounds for I in validindices(dn[1])
         x = cell_center(gbl0 + I - oneunit(I), level, h)
         theta = nscale(dens, x)
         
@@ -54,6 +54,34 @@ source for photo-ionization.
     end
 end
 
+
+"""
+Compute in a single pass the chemistry derivatives before and after photo-ionization, when
+nothing is added in between.  Gives the same result as `chemderivs!` with `Val{:pre}()` and
+`Val{true}()` followed by `chemderivs!` with `Val{:post}()` and `Val{false}()`.
+"""
+@bkernel function chemderivs_prepost!((tree, level, blkpos, blk),
+                                      dn::SVector{K, <:ScalarBlockField{D, M, G}},
+                                      n::SVector{K, <:ScalarBlockField{D, M, G}},
+                                      eabs::ScalarBlockField{D, M, G},
+                                      h, chem, dens) where {D, M, G, K}
+    isleaf(tree, level, blkpos) || return
+
+    gbl0 = global_first(blkpos, M, G)
+
+    @inbounds for I in validindices(dn[1])
+        x = cell_center(gbl0 + I - oneunit(I), level, h)
+        theta = nscale(dens, x)
+        nI = species(n, I, blk)
+        eabs1 = eabs[I, blk] / theta
+
+        dpre = derivs(chem, Val(:pre), nI, x, eabs1)
+        dpost = derivs(chem, Val(:post), nI, x, eabs1)
+        for i in 1:K
+            dn[i][I, blk] = dpre[i] + dpost[i]
+        end
+    end
+end
 
 
 """

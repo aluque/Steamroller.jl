@@ -70,8 +70,9 @@ Add the photoionization term to the density derivatives in `dni`.
 function photoionization!(tree::Tree{D}, dni, phfields, r, u1,
                           phmodel::FluidPhotoionizationModel, h, conn, geom) where D
     (;term, source, target, bc, iter) = phmodel
+    lmax = finestlevel(tree)::Int
     for i in eachindex(term)
-        for l in 1:length(tree)
+        for l in 1:lmax
             fill_ghost!(phfields[i], l, conn, bc)
         end
 
@@ -93,7 +94,7 @@ end
 
 @bkernel function add_photoionization_term!((tree, level, blkpos, blk), dn, u, a, phmodel)
     isleaf(tree, level, blkpos) || return
-    for I in validindices(dn[1])
+    @inbounds for I in validindices(dn[1])
         for k in phmodel.target
             dn[k][I, blk] += a * u[I, blk]
         end

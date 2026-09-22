@@ -14,7 +14,7 @@ Compute the derivatives resulting from the flux of electrons.
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     
-    for d in 1:D
+    @inbounds for d in 1:D
         for I in validindices(flux, d)
             I1 = Base.setindex(I, I[d] - 1, d)
 
@@ -51,9 +51,10 @@ Compute electron fluxes.
 
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
-    maxdt[blk] = Inf
+    # Local accumulator; the convert reproduces the rounding of storing into maxdt at every face.
+    mdt = convert(eltype(maxdt), Inf)
     
-    for d in 1:D
+    @inbounds for d in 1:D
         for I in validindices(e, d)
             # Compute flux between I and I1, which is 1 cell lower in the d dimension.
             I1 = Base.setindex(I, I[d] - 1, d)
@@ -85,12 +86,13 @@ Compute electron fluxes.
             flux[I, d, blk] = F
 
             # Compute max dt from CFL, diffusion and Maxwell relaxation)
-            maxdt[blk] = min(maxdt[blk],
-                             h / abs(v),
-                             h^2 / diff / 4,
-                             tmaxwell)
+            mdt = convert(eltype(maxdt), min(mdt,
+                                             h / abs(v),
+                                             h^2 / diff / 4,
+                                             tmaxwell))
         end
-    end    
+    end
+    maxdt[blk] = mdt
 end
 
 
@@ -135,9 +137,10 @@ Compute electron fluxes.
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     @assert G >= 3
-    maxdt[blk] = Inf
+    # Local accumulator; the convert reproduces the rounding of storing into maxdt at every face.
+    mdt = convert(eltype(maxdt), Inf)
     
-    for d in 1:D
+    @inbounds for d in 1:D
         for I in validindices(e, d)
             # Compute flux between I and I1, which is 1 cell lower in the d dimension.
             I1 = Base.setindex(I, I[d] - 1, d)
@@ -168,12 +171,13 @@ Compute electron fluxes.
             flux[I, d, blk] = F
 
             # Compute max dt from CFL, diffusion and Maxwell relaxation)
-            maxdt[blk] = min(maxdt[blk],
-                             h / abs(v),
-                             h^2 / diff / 4,
-                             tmaxwell)
+            mdt = convert(eltype(maxdt), min(mdt,
+                                             h / abs(v),
+                                             h^2 / diff / 4,
+                                             tmaxwell))
         end
-    end    
+    end
+    maxdt[blk] = mdt
 end
 
 
@@ -196,7 +200,7 @@ Correct fluxes from a fine grid to ensure that they are the same as in a coarser
 
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Is in CartesianIndices(isrc)
+        @inbounds for Is in CartesianIndices(isrc)
             Jd0 = @nref $D idest d -> (d != dim ? 2 * Is[d] - 1 : Is[d])
             Js = isrc[Is]
 

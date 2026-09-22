@@ -9,7 +9,7 @@ D-dimensional array `dest`.
 
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Id in CartesianIndices(idest)
+        @inbounds for Id in CartesianIndices(idest)
             Is0 = 2 * Id - oneunit(Id)
 
             Js0 = isrc[Is0]
@@ -29,7 +29,7 @@ end
 Fill blocks at a given level with restrictions from their parent blocks.
 """
 function restrict_level!(u::ScalarBlockField{D}, v::Vector{Child{D}}) where {D}
-    @batch for edge in v
+    @pbatch for edge in v
         src = u[edge.fine]
         dest = u[edge.coarse]
         restrict!(dest, subblockindices(u, edge.subblock), src, validindices(u))
@@ -62,7 +62,7 @@ dimension `D` even though one of the dimensions is fixed (singleton).
 
         # Is, Id -> Indexes of source, dest inside the rectangles
         # Js, Jd -> Indexes in the original arrays (e.g. Js = isrc[Is])
-        for Id in CartesianIndices(idest)
+        @inbounds for Id in CartesianIndices(idest)
             Js0 = @nref $D isrc d -> (d != dim ? 2 * Id[d] - 1 : Id[d])
             Jd = idest[Id]
 
