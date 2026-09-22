@@ -336,7 +336,7 @@ Apply to `tree` the refinement delta indicated by `refdelta`.
 
 `freeblocks` is a list of availabe free blocks (which may be modified by this function).
 """
-function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel)
+function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel, dens_interp)
     @blocks order=serial for (lvl, coord, blk) in tree
         lvl > 1 || continue
         isleaf(tree, lvl, coord) || continue        
@@ -361,7 +361,7 @@ function applydelta!(tree, refdelta, freeblocks, fields, minlevel, maxlevel)
                 # new blocks will not be included in the loop until the are synced
                 addblock!(tree, lvl + 1, c, nblk)
                 # pseudo-code
-                interp!(fields, nblk, blk, subcoord(c))                
+                interp!(fields, nblk, blk, subcoord(c), dens_interp)                
             end
         end
     end

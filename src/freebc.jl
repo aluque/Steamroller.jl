@@ -247,7 +247,9 @@ function newblock!(f::FreeBC, j0=nothing)
     !isnothing(j0) && @assert(j0 == j)
 end
 
-function interp!(f::FreeBC, dest, src, sub)
+function interp!(f::FreeBC, dest, src, sub, dens_interp)
+    # uh is not a density and it is only an initial guess for the next solve, so dens_interp
+    # does not apply to it.
     (;uh) = f
     interp!(uh[dest], validindices(uh), uh[src], subblockindices(uh, sub))
 end

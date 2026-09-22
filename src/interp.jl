@@ -29,6 +29,19 @@ removing a systematic error wherever the charge concentrates.
 struct InterpPseudoQuadratic{P} end
 InterpPseudoQuadratic() = InterpPseudoQuadratic{false}()
 
+
+"""
+Map an input symbol to an interpolation method.  For InterpPseudoQuadratic, `clamp`
+ensures positivity.
+"""
+function getinterp(sym::Symbol, clamp::Bool=false)
+    sym == :limited ? InterpLimited() :
+        sym == :linear ? InterpLinear() :
+        sym == :pseudoquadratic ? InterpPseudoQuadratic{clamp}() :
+        sym == :copy ? InterpCopy() :
+        throw(ArgumentError("Unknown interpolation method $sym"))
+end
+
 """
 The minmod limiter: zero if `a` and `b` have opposite signs, otherwise the one with the smaller
 magnitude.

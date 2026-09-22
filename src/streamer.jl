@@ -186,12 +186,16 @@ end
 
 """
 Interpolate all fields that require interpolation in `sf`, from block `src` into `dest`, with
-`sub` being the sub-block local coordinates.
+`sub` being the sub-block local coordinates.  `dens_interp` is the interpolation applied to the
+species densities.
 """
-function interp!(sf::StreamerFields, dest, src, sub)
+function interp!(sf::StreamerFields, dest, src, sub, dens_interp)
     (;n, u, photo, m) = sf
+
+    # Only the densities are state; u and photo are just initial guesses for the iterative solves
+    # that run at the start of every derivs!, so they do not need a configurable interpolation.
     for ni in n
-        interp!(ni[dest], validindices(ni), ni[src], subblockindices(ni, sub))
+        interp!(dens_interp, ni[dest], validindices(ni), ni[src], subblockindices(ni, sub))
     end
     
     interp!(u[dest], validindices(u), u[src], subblockindices(u, sub))
@@ -204,9 +208,10 @@ function interp!(sf::StreamerFields, dest, src, sub)
     m[dest] .= 0
 end
 
-interp!(::Nothing, dest, src, sub) = nothing
-interp!(::Tuple{}, dest, src, sub) = nothing
-interp!(t::Tuple, dest, src, sub) = (interp!(t[1], dest, src, sub); interp!(Base.tail(t), dest, src, sub))
+interp!(::Nothing, dest, src, sub, dens_interp) = nothing
+interp!(::Tuple{}, dest, src, sub, dens_interp) = nothing
+interp!(t::Tuple, dest, src, sub, dens_interp) = (interp!(t[1], dest, src, sub, dens_interp);
+                                                 interp!(Base.tail(t), dest, src, sub, dens_interp))
 
 
 """
@@ -236,7 +241,9 @@ struct StreamerConf{T,
                     TR <: AbstractTransportModel,
                     F  <: AbstractFluxScheme,
                     GI,
+                    RI,
                     PI,
+                    CI,
                     CH <: AbstractChemistry,
                     PH <: PhotoionizationModel,
                     S  <: AbstractDensityScaling,
@@ -272,8 +279,14 @@ struct StreamerConf{T,
     "Interpolation of densities into refinement-boundary ghost cells"
     dens_ghost_interp::GI
 
+    "Interpolation of densities into the blocks created when the mesh is refined"
+    dens_refine_interp::RI
+
     "Interpolation of the electrostatic potential into refinement-boundary ghost cells"
     poisson_ghost_interp::PI
+
+    "Interpolation of the charge density into refinement-boundary ghost cells"
+    charge_ghost_interp::CI
 
     "Chemistry model"
     chem::CH
@@ -312,7 +325,7 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     (;q, q1, r, q, u, u1, e, flux, photo, eabs, maxdt) = fld
     (;eb, h, trans, fluxschem, chem, phmodel, dens, geom, lpl, freebnd, pbc, fbc) = conf
     (;poisson_fmg, poisson_iter, poisson_level_iter) = conf
-    (;dens_ghost_interp, poisson_ghost_interp) = conf
+    (;dens_ghost_interp, poisson_ghost_interp, charge_ghost_interp) = conf
     (nup, ndown, ntop) = poisson_level_iter
     
     netcharge!(tree, q, ni, chem)
@@ -321,9 +334,8 @@ function derivs!(dni, ni, t, fld::StreamerFields, conf::StreamerConf{T},
     # by not doing this restriction always.
     restrict_full!(q, conn)
     for l in 1:length(tree)
-        fill_ghost!(q, l, conn, pbc)
+        fill_ghost!(q, l, conn, pbc, charge_ghost_interp)
         rhs_level!(q1, q, tree[l], lpl, geom)
-        fill_ghost!(q1, l, conn, pbc)
     end
 
     setfreebc!(freebnd, pbc, fld, conf, tree, conn)
@@ -440,7 +452,7 @@ end
 function refine!(fields::StreamerFields, conf::StreamerConf{T}, tree, conn, t, dt;
                  minlevel=1, maxlevel=typemax(Int), ref=nothing) where {T}
     (;m, refdelta, n, freeblocks) = fields
-    (;h, fbc, freebnd) = conf
+    (;h, fbc, freebnd, dens_ghost_interp, dens_refine_interp) = conf
 
     ref = isnothing(ref) ? conf.ref : ref
 
@@ -451,10 +463,11 @@ function refine!(fields::StreamerFields, conf::StreamerConf{T}, tree, conn, t, d
     for ni in n
         fill_ghost_copy!(ni, conn)
         fill_ghost_bnd!(ni, conn, fbc)
-        fill_ghost_interp!(ni, conn)
+        fill_ghost_interp!(ni, conn, dens_ghost_interp)
     end
         
-    applydelta!(tree, refdelta, freeblocks, (fields, freebnd), minlevel, maxlevel)
+    applydelta!(tree, refdelta, freeblocks, (fields, freebnd), minlevel, maxlevel,
+                dens_refine_interp)
 end
 
 """
@@ -467,7 +480,7 @@ a scalar, where `D` is the dimensionality.  Remaining `kwargs` are passed to ref
 Returns the new connectivity.
 """
 function initial_conditions!(fields::StreamerFields{T, K}, conf, tree, ref, conditions; kwargs...) where {T, K}
-    (;h, stencil, fbc) = conf
+    (;h, stencil, fbc, dens_ghost_interp) = conf
     (;freeblocks, n, photo) = fields
 
     
@@ -493,7 +506,7 @@ function initial_conditions!(fields::StreamerFields{T, K}, conf, tree, ref, cond
     for ni in n
         fill_ghost_copy!(ni, conn)
         fill_ghost_bnd!(ni, conn, fbc)
-        fill_ghost_interp!(ni, conn)
+        fill_ghost_interp!(ni, conn, dens_ghost_interp)
     end
 
     for ph in photo

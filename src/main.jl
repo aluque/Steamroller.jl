@@ -135,11 +135,17 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "The type of flux scheme (:koren / :weno)"
     flux_scheme::Symbol = :koren
 
-    "Interp. of density ghosts at ref. boundaries (:limited / :linear / :pseudoquadratic / :copy)"
+    "Interp. of density ghosts at ref. boundaries (:limited/ :linear/ :pseudoquadratic/ :copy)"
     dens_ghost_interp::Symbol = :limited
 
-    "Interp. of potential at ghosts at ref. boundaries (:linear / :pseudoquadratic)"
-    poisson_ghost_interp::Symbol = :linear
+    "Interp. of potential at ghosts at ref. boundaries (:limited/ :linear/ :pseudoquadratic/ :copy)"
+    poisson_ghost_interp::Symbol = :pseudoquadratic
+
+    "Interp. of charge-density ghosts at ref. boundaries (default `dens_ghost_interp`)"
+    charge_ghost_interp::Union{Symbol, Nothing} = nothing
+
+    "Interp. of densities into newly refined blocks (:limited / :linear / :pseudoquadratic / :copy)"
+    dens_refine_interp::Symbol = :limited
 
     "Use full multigrid for the Poisson equation?"
     poisson_fmg::Bool = false
@@ -282,18 +288,11 @@ function _main(input::InputParameters{T}) where T
     # Koren needs 2 ghosts; WENO needs 4
     G = needghost(fluxschem)
 
-    # Interpolation of densities into ghost cells at refinement boundaries.  Densities use the
-    # clamped variant of the quadratic interpolation to stay non-negative.
-    dens_ghost_interp = (input.dens_ghost_interp == :limited ? InterpLimited() :
-        input.dens_ghost_interp == :linear ? InterpLinear() :
-        input.dens_ghost_interp == :pseudoquadratic ? InterpPseudoQuadratic{true}() :
-        input.dens_ghost_interp == :copy ? InterpCopy() :
-        throw(ArgumentError("Unknown ghost interpolation $(input.dens_ghost_interp)")))
-
-    # Interpolation of the potential into ghost cells at refinement boundaries
-    poisson_ghost_interp = (input.poisson_ghost_interp == :linear ? InterpLinear() :
-        input.poisson_ghost_interp == :pseudoquadratic ? InterpPseudoQuadratic() :
-        throw(ArgumentError("Unknown ghost interpolation $(input.poisson_ghost_interp)")))
+    # Interpolation methods
+    dens_ghost_interp = getinterp(input.dens_ghost_interp, true)
+    dens_refine_interp = getinterp(input.dens_refine_interp, true)
+    poisson_ghost_interp = getinterp(input.poisson_ghost_interp)
+    charge_ghost_interp = getinterp(something(input.charge_ghost_interp, input.dens_ghost_interp))
 
     # Grid size at top level
     h = L / M
@@ -367,9 +366,10 @@ function _main(input::InputParameters{T}) where T
     
     # Set the streamer configuration
     conf = StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, input.trans, fluxschem,
-                        dens_ghost_interp, poisson_ghost_interp, input.chem, input.phmodel,
-                        input.dens, ref, stencil, input.dt_safety_factor, input.poisson_fmg,
-                        input.poisson_iter, input.poisson_level_iter)
+                        dens_ghost_interp, dens_refine_interp, poisson_ghost_interp,
+                        charge_ghost_interp, input.chem, input.phmodel, input.dens, ref, stencil,
+                        input.dt_safety_factor, input.poisson_fmg, input.poisson_iter,
+                        input.poisson_level_iter)
     
     # Start with a full tree up to level 2
     populate!(tree, input.init_populate_level)
