@@ -396,10 +396,17 @@ function _main(input::InputParameters{T}) where T
         
         zemax = r[end]
         @info "Snapshot" t zemax emax min_h=(h / 2^(findlast(!isempty, tree) - 1))
-        
-        push!(az, r[end])
+
+        isnew = isempty(at)
+        push!(az, zemax)
         push!(at, t)
         push!(aemax, emax)
+
+        # Appended at every output time so that the history survives an interrupted run.
+        open(joinpath(input.outfolder, "emax.csv"), isnew ? "w" : "a") do io
+            isnew && writedlm(io, ["t" "zemax" "emax"], ',')
+            writedlm(io, [t zemax emax], ',')
+        end
     end
 
     isave = 0
