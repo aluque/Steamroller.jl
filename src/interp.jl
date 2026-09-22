@@ -29,6 +29,8 @@ removing a systematic error wherever the charge concentrates.
 struct InterpPseudoQuadratic{P} end
 InterpPseudoQuadratic() = InterpPseudoQuadratic{false}()
 
+struct InterpPositive; end
+
 
 """
 Map an input symbol to an interpolation method.  For InterpPseudoQuadratic, `clamp`
@@ -38,6 +40,7 @@ function getinterp(sym::Symbol, clamp::Bool=false)
     sym == :limited ? InterpLimited() :
         sym == :linear ? InterpLinear() :
         sym == :pseudoquadratic ? InterpPseudoQuadratic{clamp}() :
+        sym == :positive ? InterpPositive() :
         sym == :copy ? InterpCopy() :
         throw(ArgumentError("Unknown interpolation method $sym"))
 end
@@ -185,6 +188,57 @@ the value). Default is to overwrite.
 
                 f = $(P ? :(max(f, zero(f))) : :f)
                 dest[Jd] = func(f, dest[Jd])
+            end
+        end
+    end
+end
+
+
+"""
+Interpolate from a rectangle of an D-dimensional array `src` to another D-dimensional array `dest`
+with a conservative, positivity-preserving fit. In contrast to InterpLinear this adds a discontinuity
+at coarse-cell boundaries but this is third-order so perhaps well-behaved.
+
+`func` allows to combine the interpolation with an previous value in the `dest` field (e.g. `+` adds
+the value). Default is to overwrite.
+"""
+@generated function interp!(::InterpPositive,
+                            dest::AbstractArray{T, D}, idest::CartesianIndices{D},
+                            src::AbstractArray{T, D}, isrc::CartesianIndices{D},
+                            func::B=_first) where {T, D, B}
+    quote
+        for Is in CartesianIndices(isrc)
+            Id0 = 2 * Is - oneunit(Is)
+            Jd0 = idest[Id0]
+
+            Js = isrc[Is]
+            u0 = src[Js]
+
+            s = @ntuple $D j -> begin
+                up = @nref $D src d -> (d == j ? Js[d] + 1 : Js[d])
+                um = @nref $D src d -> (d == j ? Js[d] - 1 : Js[d])
+                (up - um) / 8
+            end
+
+            # The lowest child value is u0 - sum(|s|); rescale all slopes together if it is
+            # negative.  A common factor keeps the interpolation linear in the data, so a linear
+            # combination of species (e.g. the net charge) is interpolated consistently.
+            a = sum(abs, s)
+            phi = (a > max(u0, zero(u0))) ? max(u0, zero(u0)) / a : one(u0)
+
+            @nloops $D i d->0:1 begin
+                Jd = CartesianIndex(@ntuple $D d -> Jd0[d] + i_d)
+                sg = @ntuple $D d -> 2 * i_d - 1
+
+                f = u0
+                for j in 1:$D
+                    f += sg[j] * phi * s[j]
+                end
+
+                # `phi` makes the lowest child exactly zero, so this only removes the roundoff of
+                # the cancellation above; it does not bias the mean the way a clamp on the
+                # unscaled fit would.
+                dest[Jd] = func(max(f, zero(f)), dest[Jd])
             end
         end
     end

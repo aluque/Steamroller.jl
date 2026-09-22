@@ -144,8 +144,13 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Interp. of charge-density ghosts at ref. boundaries (default `dens_ghost_interp`)"
     charge_ghost_interp::Union{Symbol, Nothing} = nothing
 
-    "Interp. of densities into newly refined blocks (:limited / :linear / :pseudoquadratic / :copy)"
-    dens_refine_interp::Symbol = :limited
+    """
+    Interp. of densities into newly refined blocks (:positive / :limited / :linear /
+    :pseudoquadratic / :copy).  Unlike the ghost interpolations this one becomes part of the
+    state, so a slope-flattening method (:limited, :copy) acts as a numerical diffusion that
+    blunts the streamer head every time the refinement cascade follows it.
+    """
+    dens_refine_interp::Symbol = :positive
 
     "Use full multigrid for the Poisson equation?"
     poisson_fmg::Bool = false
