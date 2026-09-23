@@ -170,7 +170,7 @@ Add photo ionization production. The field fields.photo[1] must be filled with t
 for example in the Zhelezniak model where photon emission is assumed to be proportional to impact
 ionization this field must contain the total number density of impact ionization events in a cell.
 """
-@bkernel order=flat function mcphoto!((tree, lvl, coord, blk),
+function mcphoto!((tree, lvl, coord, blk),
                                         model::MontecarloPhotoionizationModel{T, D, M},
                                         fields, h, 
                                         geom::AbstractGeometry) where {T, D, M}
@@ -178,13 +178,13 @@ ionization this field must contain the total number density of impact ionization
     isleaf(tree, lvl, coord) || return
     (;source, target, eff) = model
     (;n, photo) = fields
-    f = cell_faces(coord, lvl, M, h)
     hl = unitcell(lvl, h)
 
-    for I in localindices(photo[1])
+    @inbounds for I in localindices(photo[1])
         I1 = addghost(photo[1], I)
-        dv = prod(ntuple(d -> volfactor(geom, d, f[d][I[d]], hl), Val(D)))
-        
+        x0 = cell_lower(coord, I, lvl, M, h)
+        dv = cellvolume(geom, coord, I, lvl, M, h)
+
         # Compute number of photons
         nex = dv * photo[1][I1, blk] * eff
 
@@ -197,21 +197,31 @@ ionization this field must contain the total number density of impact ionization
         nphotons = rand(Poisson(nex))
         
         for j in 1:nphotons
-            x = ntuple(d -> f[d][I[d]] + hl * rand(), Val(D))            
+            x = ntuple(d -> x0[d] + hl * rand(), Val(D))
             xabs = samplephoton(x, model, geom, Val(D))
             loc = treelocate(tree, xabs, M, h)
             isnothing(loc) && continue
-            (blk1, m1, l1) = loc
-            # This may look complicated just to find the volume of the cell but it is here
-            # to enable cylindrical geometries. In cartesian geometry everything simplifies and
-            # I think the compiler is able to remove almost everything.
-            f1 = cell_faces(tree[l1].coord[blk1], l1, M, h)
-            hl1 = unitcell(l1, h)
+            (blk1, m1, l1, coord1) = loc
+            w = 1 / cellvolume(geom, coord1, m1, l1, M, h)
             for trg in target
-                dv1 = prod(ntuple(d -> volfactor(geom, d, f1[d][m1[d]], hl1), Val(D)))
-                ntrg = getblk(n[trg], blk1)
-                Atomix.@atomic ntrg[addghost(n[trg], m1)] += 1 / dv1
+                atomicadd!(n[trg], addghost(n[trg], m1), blk1, w)
             end
+        end
+    end
+end
+
+#=
+Here we use Threads.@spawn because @batch / @pbatch allocates statically giving roughly the
+same number of blocks per thread. Because some blocks (with higher photon production) require much more
+work than other that leaves threads underused.
+=#
+function mcphoto!(tree::Tree, model::MontecarloPhotoionizationModel, fields, h, geom::AbstractGeometry)
+    next = Threads.Atomic{Int}(1)
+    nb = nblocks(tree)
+    @sync for _ in 1:Threads.nthreads()
+        Threads.@spawn while (i = Threads.atomic_add!(next, 1)) <= nb
+            (lvl, coord, blk) = nth(tree, i)
+            mcphoto!((tree, lvl, coord, blk), model, fields, h, geom)
         end
     end
 end

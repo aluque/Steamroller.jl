@@ -242,7 +242,22 @@ end
 end
 
 getblk(f::AbstractBlockField, blk) = f[blk]
+
+
+"""
+Atomically add `v` to `f[I, blk]`, where `I` has ghost offsets.
+"""
+@inline function atomicadd!(f::_ScalarBlockFieldA, I::CartesianIndex, blk, v)
+    @inbounds li = LinearIndices(f.u)[I, blk]
+    @inbounds Atomix.@atomic f.u.data[li] += v
+end
+
+@inline function atomicadd!(f::_ScalarBlockFieldV, I::CartesianIndex, blk, v)
+    @inbounds Atomix.@atomic f.u[blk][I] += v
+end
+
 valid(f::ScalarBlockField, blk) = view(f[blk], validindices(f))
+
 function valid(f::VectorBlockField{D}, blk, dim) where D
     v = view(f[blk], validindices(f, dim).indices..., dim)
     return v

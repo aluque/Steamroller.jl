@@ -127,6 +127,15 @@ Cell faces in block `b` at level `l` given `m` cells per block.
     ntuple(d -> range(low[d], high[d], m + 1), Val(D))
 end
 
+"""
+Lower corner of the cell with local index `I` (no ghosts) in block `b` at level `l`, with
+block size `m`.
+"""
+@inline function cell_lower(b::CartesianIndex{D}, I, l, m, h=1.0) where {D}
+    hl = unitcell(l, h)
+    ntuple(d -> hl * (m * (b[d] - 1) + I[d] - 1), Val(D))
+end
+
 @inline function cell_center(b::CartesianIndex{D}, l, h) where D
     hl = unitcell(l, h)
     ntuple(d -> b[d] * hl - hl / 2, Val(D))

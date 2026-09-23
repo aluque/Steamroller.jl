@@ -78,7 +78,21 @@ function factorexpr(::CylindricalGeometry{D}, c, d) where D
 end
 
 """
-Cell volume factor along dimension d of a cell with faces from f1 to f1 .+ h
+Cell volume factor along dimension d of a cell with faces from f1 to f1 .+ h.  Along the radial
+dimension of a cylindrical geometry it is π((f1 + h)^2 - f1^2) = 2π h (f1 + h / 2).
 """
-@inline volfactor(::CartesianGeometry, d, f1, h) = h    
-@inline volfactor(::CylindricalGeometry{D}, d, f1, h) where D = d == D ? 2π * h * f1 : h
+@inline volfactor(::CartesianGeometry, d, f1, h) = h
+@inline volfactor(::CylindricalGeometry{D}, d, f1, h) where D = d == D ? 2π * h * (f1 + h / 2) : h
+
+
+"""
+Volume of the cell with local index `I` (1-based, no ghosts) in block `b` at level `l`, given `m`
+cells per block.
+"""
+@inline function cellvolume(geom::AbstractGeometry, b::CartesianIndex{D}, I, l, m, h) where D
+    hl = unitcell(l, h)
+    f = cell_lower(b, I, l, m, h)
+    prod(ntuple(d -> volfactor(geom, d, f[d], hl), Val(D)))
+end
+
+@inline cellvolume(::CartesianGeometry, b::CartesianIndex{D}, I, l, m, h) where D = unitcell(l, h)^D

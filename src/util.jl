@@ -102,23 +102,28 @@ end
 
 """
 Find the block and local coordinates (without ghosts) of the smallest cell containing a point `r`.
-Returns a tuple `(blk, m, l)` where `blk` is the block index, `m` is the local coordinate
-(CartesianIndex, 1-based, no ghost offset) of the containing cell inside the block and l is the
-level. Returns `nothing` if the point is outside the tree.
+Returns a tuple `(blk, m, l, coord)` where `blk` is the block index, `m` is the local coordinate
+(CartesianIndex, 1-based, no ghost offset) of the containing cell inside the block, `l` is the
+level and `coord` the block coordinate. Returns `nothing` if the point is outside the tree.
 """
 function treelocate(tree::Tree{D}, r, M, h=1.0) where D
-    flev = finestlevel(tree)
+    flev = finestlevel(tree)::Int
     # Using 1 + ... and not fld1, mod1 because e.g. mod1(0.0, 8.0) == 8.0.
-    c = CartesianIndex(ntuple(d -> round(Int, 1 + fld(r[d], unitcell(flev, h))), Val(D)))
-    blk = zero(BlockIndex)
+    hl = unitcell(flev, h)
+    c = CartesianIndex(ntuple(d -> round(Int, 1 + fld(r[d], hl)), Val(D)))
+    dom = tree[flev].domain.indices
+    inside = map((x, i) -> M * (first(i) - 1) < x <= M * last(i), Tuple(c), dom)
+    all(inside) || (return nothing)
+
+    # `c` is reassigned in the loop, so closures must not capture it (it would be boxed).
     for l in flev:-1:1
-        coord = CartesianIndex(ntuple(d -> fld1(c[d], M), Val(D)))
+        coord = CartesianIndex(map(x -> fld1(x, M), Tuple(c)))
         blk = get(tree[l], coord)
         if !iszero(blk)
-            m = CartesianIndex(ntuple(d -> mod1(c[d], M), Val(D)))
-            return (blk, m, l)
+            m = CartesianIndex(map(x -> mod1(x, M), Tuple(c)))
+            return (blk, m, l, coord)
         end
-        c = CartesianIndex(ntuple(d -> fld1(c[d], 2), Val(D)))
+        c = CartesianIndex(map(x -> fld1(x, 2), Tuple(c)))
     end
 
     return nothing
