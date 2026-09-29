@@ -38,23 +38,25 @@ struct FreeBC{D, M, T, S <: ScalarBlockField, GT, P10, P01}
         
         k = (π / H) .* (1:n)
         x = k .* R
-        f = @. (2 / H) / (k * (besselix(1, x) / besselix(0, x) +
-                               besselkx(1, x) / besselkx(0, x)))
+        # besselix/besselkx promote to Float64; the FFTW plans must match the eltype of the
+        # workspaces, so convert f before planning.
+        f = Vector{T}(@. (2 / H) / (k * (besselix(1, x) / besselix(0, x) +
+                                         besselkx(1, x) / besselkx(0, x))))
         uh = ScalarBlockField{D, M, G, T}(storage(u))
         
         rodft10 = FFTW.plan_r2r!(f, FFTW.RODFT10)
         rodft01 = FFTW.plan_r2r!(f, FFTW.RODFT01)
         
         new{D, M, T, typeof(uh), typeof(geom), typeof(rodft10), typeof(rodft01)}(geom, uh, H, R, level,
-                                                                                 zeros(n),
-                                                                                 zeros(n),
-                                                                                 zeros(n),
+                                                                                 zeros(T, n),
+                                                                                 zeros(T, n),
+                                                                                 zeros(T, n),
                                                                                  f, rodft10, rodft01)
     end
 end
 
 
-_perpdim(::FreeBC{D, M, T, S, CylindricalGeometry{dim}}) where {dim, D, M, T, S} = dim
+_perpdim(::FreeBC{D, M, T, S, <:CylindricalGeometry{dim}}) where {dim, D, M, T, S} = dim
 
 function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::StreamerConf{T},
                    tree, conn) where T
@@ -150,7 +152,7 @@ end
 Set the outer values of the charge `q` in order to satisfy the inhomogeneous boundary
 conditions given by `b`.
 """
-function setouter!(q::ScalarBlockField{D, M, G}, b, tree, conn, dim, level, s, geom) where {D, M, G}
+function setouter!(q::ScalarBlockField{D, M, G, T}, b, tree, conn, dim, level, s, geom) where {D, M, G, T}
     otherdim = mod1(dim + 1, D)
 
     δ = CartesianIndex(ntuple(d -> d == dim ? 1 : 0, Val(D)))
@@ -174,7 +176,7 @@ function setouter!(q::ScalarBlockField{D, M, G}, b, tree, conn, dim, level, s, g
                                           Val(D)))
                 # Average b
                 bmean = sum(@view b[p * (i0 + i - 1) + 1: p * (i0 + i)]) / p
-                q[I, iblk] += 2 * factor(geom, J, δ) * bmean / sl
+                q[I, iblk] += 2 * factor(geom, J, δ, T) * bmean / sl
             end
         end
 
@@ -211,7 +213,7 @@ function setouter!(q::ScalarBlockField{D, M, G}, b, tree, conn, dim, level, s, g
             end
             
             # __w1 is the interpolation weight defined in interp.jl.
-            q[I, iblk] += 2 * __w1(Val(D)) * factor(geom, J1, δ) * bmean / sl
+            q[I, iblk] += 2 * __w1(Val(D), T) * factor(geom, J1, δ, T) * bmean / sl
         end        
     end
 end

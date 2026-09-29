@@ -197,7 +197,7 @@ function mcphoto!((tree, lvl, coord, blk),
         nphotons = rand(Poisson(nex))
         
         for j in 1:nphotons
-            x = ntuple(d -> x0[d] + hl * rand(), Val(D))
+            x = ntuple(d -> x0[d] + hl * rand(typeof(hl)), Val(D))
             xabs = samplephoton(x, model, geom, Val(D))
             loc = treelocate(tree, xabs, M, h)
             isnothing(loc) && continue
@@ -231,31 +231,33 @@ mcphoto!(tree, model::FluidPhotoionizationModel, fields, args...) = nothing
 """
 Sample the absorption location of a photon emitted at `x`.
 """
-function samplephoton(x, model, geom::CartesianGeometry, dim::Val{3})
+function samplephoton(x, model::MontecarloPhotoionizationModel{T}, geom::CartesianGeometry,
+                      dim::Val{3}) where T
     (;logchimin, logchimax) = model
-    ell = exp(-(logchimin + rand() * (logchimax - logchimin)))
+    ell = exp(-(logchimin + rand(T) * (logchimax - logchimin)))
     rabs = rand(Exponential(ell))
-    return x .+ rabs .* randsphere()
+    return x .+ rabs .* randsphere(T)
 end
 
-function samplephoton(x, model, geom::CylindricalGeometry{C}, dim::Val{2}) where C
+function samplephoton(x, model::MontecarloPhotoionizationModel{T},
+                      geom::CylindricalGeometry{C}, dim::Val{2}) where {T, C}
     (;logchimin, logchimax) = model
-    ell = exp(-(logchimin + rand() * (logchimax - logchimin)))
+    ell = exp(-(logchimin + rand(T) * (logchimax - logchimin)))
     rabs = rand(Exponential(ell))
-    x1 = SA[x[1], x[2], 0] .+ rabs .* randsphere()
+    x1 = SA[x[1], x[2], 0] .+ rabs .* randsphere(T)
     rho = hypot(x1[C], x1[3])
     return SVector(ntuple(d -> d == C ? rho : x1[d], Val(2)))
 end
 
 
 """
-Sample points from the unitary sphere. 
+Sample points from the unitary sphere, with coordinates of type `T`.
 """
-function randsphere()
-    ϕ = 2π * rand()
+function randsphere(::Type{T}=Float64) where T
+    ϕ = T(2π) * rand(T)
     sinϕ, cosϕ = sincos(ϕ)
     
-    u = 2 * rand() - 1
+    u = 2 * rand(T) - 1
     v = sqrt(1 - u^2)
 
     @SVector [v * cosϕ, v * sinϕ, u]

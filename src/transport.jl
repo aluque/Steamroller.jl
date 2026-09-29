@@ -27,6 +27,18 @@ the townsend expression.
 end
 
 
+"""
+Convert the floating-point parameters of a transport or chemistry model `x` to `T`, so that
+e.g. `BagheriTransportModel()` in an input with `T = Float32` does not promote the kernels.
+Models without such parameters are returned unchanged.
+"""
+_convert_model(::Type, x) = x
+_convert_model(::Type{T}, x::AbstractFloat) where T = convert(T, x)
+
+_convert_model(::Type{T}, m::MinimalTransportModel) where T =
+    MinimalTransportModel{T}((getfield(m, i) for i in 1:fieldcount(typeof(m)))...)
+
+
 @inline mobility(m::MinimalTransportModel, eabs, p=nothing) = m.μ
 @inline diffusion(m::MinimalTransportModel, eabs, p=nothing) = m.D
 @inline nettownsend(m::MinimalTransportModel, eabs, p=nothing) = townsend(m, eabs) - attachment(m, eabs)
@@ -69,6 +81,9 @@ The transport model proposed in Bagheri et al. 2018.
     # Seems like the CWI group actually used
     # η::T = 340.98719
 end
+
+_convert_model(::Type{T}, m::BagheriTransportModel) where T =
+    BagheriTransportModel{T}((getfield(m, i) for i in 1:fieldcount(typeof(m)))...)
 
 """
 When making multiple queries to the transport data, we may want to pre-fetch some data for performance

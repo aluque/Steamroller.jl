@@ -159,19 +159,40 @@ end
 end
 
 @inline diagelm(s, ::LaplacianDiscretization{2, 4},
-                    ::CartesianGeometry, ::Val{:lhs}, J) = -20 / 6
+                    ::CartesianGeometry, ::Val{:lhs}, J) = typeof(s)(-20 / 6)
 
 
 # COMPACT 4TH ORDER 2D CYLINDRICAL
 
+#=
+The coefficients are ratios of integer polynomials of the global radial index i.  Each ratio is
+evaluated as T(a) / T(b), which for T = Float64 is exactly what a / b does for Ints, but does not
+promote to Float64 for other T.
+=#
+"""
+Coefficients of the 4th-order cylindrical lhs stencil for radial index `i`: the radial neighbors
+towards (`c0m`) and away from (`c0p`) the axis, the diagonal neighbors towards (`cm`) and away
+from (`cp`) the axis, and the center (`c0`).
+"""
+@inline function _cyl4coeffs(::Type{T}, i) where T
+    cm  = T(2*(i-1)) / T(2i-1)
+    cp  = T(2i) / T(2i-1)
+    c0m = T(4*evalpoly(i, (-2, 9, -16, 8))) / T((2i-1)^3)
+    c0p = T(4*evalpoly(i, (1, 1,-8, 8))) / T((2i-1)^3)
+    c0  = T(-16*evalpoly(i, (1, -5, 5))) / T((1-2i)^2)
+    return (cm, c0m, c0, c0p, cp)
+end
+
+
 @propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
                               ::LaplacianDiscretization{2, 4},
                               ::CylindricalGeometry{1},
                               ::Val{:lhs})
     i = J[1]
-    @fastmath @stencil u[I] [2*(i-1)/(2i-1)    4*(-2+9i-16i^2+8i^3)/(2i-1)^3  2*(i-1)/(2i-1);
-                             4                      -16*(1-5i+5i^2)/(1-2i)^2               4;
-                             2i/(2i-1)            4*(1+i-8i^2+8i^3)/(2i-1)^3        2i/(2i-1)] 6
+    (cm, c0m, c0, c0p, cp) = _cyl4coeffs(eltype(u), i)
+    @fastmath @stencil u[I] [cm  c0m  cm;
+                             4   c0   4;
+                             cp  c0p  cp] 6
 end
 
 @propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -179,9 +200,12 @@ end
                               ::CylindricalGeometry{1},
                               ::Val{:rhs})
     i = J[1]
-     @fastmath @stencil u[I] [0   (2i-2)/(2i-1)  0;
-                              1               8  1;
-                              0       2i/(2i-1)  0] 12
+    T = eltype(u)
+    cm = T(2i - 2) / T(2i - 1)
+    cp = T(2i) / T(2i - 1)
+     @fastmath @stencil u[I] [0  cm  0;
+                              1   8  1;
+                              0  cp  0] 12
 end
 
 @propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -189,9 +213,10 @@ end
                               ::CylindricalGeometry{2},
                               ::Val{:lhs})
     i = J[2]
-    @fastmath @stencil u[I] [2*(i-1)/(2i-1)                                        4   2i/(2i-1);
-                             4*evalpoly(i, (-2, 9, -16, 8))/(2i-1)^3  -16*evalpoly(i, (1, -5, 5))/(1-2i)^2 4*evalpoly(i, (1, 1,-8, 8))/(2i-1)^3;
-                             2*(i-1)/(2i-1)                                        4          2i/(2i-1)] 6
+    (cm, c0m, c0, c0p, cp) = _cyl4coeffs(eltype(u), i)
+    @fastmath @stencil u[I] [cm   4   cp;
+                             c0m  c0  c0p;
+                             cm   4   cp] 6
 end
 
 @propagate_inbounds function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},
@@ -199,16 +224,20 @@ end
                               ::CylindricalGeometry{2},
                               ::Val{:rhs})
     i = J[2]
-    @fastmath @stencil u[I] [0                           1          0;
-                             (2i-2)/(2i-1)               8  2i/(2i-1);
-                             0                           1          0] 12
+    T = eltype(u)
+    cm = T(2i - 2) / T(2i - 1)
+    cp = T(2i) / T(2i - 1)
+    @fastmath @stencil u[I] [0   1  0;
+                             cm  8  cp;
+                             0   1  0] 12
 end
 
 
 @inline function diagelm(s, ::LaplacianDiscretization{2, 4},
                          ::CylindricalGeometry{N}, ::Val{:lhs}, J) where N
     i = J[N]
-    @fastmath -16*(1-5i+5i^2)/(1-2i)^2 / 6
+    T = typeof(s)
+    @fastmath T(-16*(1-5i+5i^2)) / T((1-2i)^2) / 6
 end
 
 # @inline function applystencil(u, s, I::CartesianIndex{2}, J::CartesianIndex{2},

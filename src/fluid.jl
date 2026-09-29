@@ -6,9 +6,9 @@ Routines for solving the fluid equations.
 Compute the derivatives resulting from the flux of electrons.
 """
 @bkernel function fluxderivs!((tree, level, blkpos, blk),
-                              dne::ScalarBlockField{D, M, G},
+                              dne::ScalarBlockField{D, M, G, T},
                               flux::VectorBlockField{D, M, G},
-                              h, geom) where {D, M, G}
+                              h, geom) where {D, M, G, T}
     isleaf(tree, level, blkpos) || return
 
     gbl0 = global_first(blkpos, M)
@@ -23,8 +23,8 @@ Compute the derivatives resulting from the flux of electrons.
             J1 = Base.setindex(J, J[d] - 1, d)
             
             F = flux[I, d, blk]
-            dne[I, blk]  += factor(geom, J, I1 - I) * F / h
-            dne[I1, blk] -= factor(geom, J1, I - I1) * F / h 
+            dne[I, blk]  += factor(geom, J, I1 - I, T) * F / h
+            dne[I1, blk] -= factor(geom, J1, I - I1, T) * F / h 
         end
     end    
 end
@@ -79,7 +79,7 @@ Compute electron fluxes.
                                                  ne[Id, blk] - ne[Iu, blk]))            
 
             # Consider only the advective flux for the computation of the Maxwell relax time
-            tmaxwell = (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
+            tmaxwell = convert(typeof(F), co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
 
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h
@@ -114,12 +114,15 @@ ordered upwind -> downwind.
     iszero(s) && return zero(T)
     u = uu / s
 
-    β = @SVector [13/12 * (u[1] - 2u[2] + u[3])^2 + 1/4 * (u[1] - 4u[2] + 3u[3])^2,
-                  13/12 * (u[2] - 2u[3] + u[4])^2 + 1/4 * (u[2] - u[4])^2,
-                  13/12 * (u[3] - 2u[4] + u[5])^2 + 1/4 * (3u[3] - 4u[4] + u[5])^2]
-    α = WENO_GAMMA ./ (T(1e-6) .+ β).^2
+    # Constants in T: Float64 constants would promote the whole reconstruction.
+    c1 = T(13/12)
+    c2 = T(1/4)
+    β = @SVector [c1 * (u[1] - 2u[2] + u[3])^2 + c2 * (u[1] - 4u[2] + 3u[3])^2,
+                  c1 * (u[2] - 2u[3] + u[4])^2 + c2 * (u[2] - u[4])^2,
+                  c1 * (u[3] - 2u[4] + u[5])^2 + c2 * (3u[3] - 4u[4] + u[5])^2]
+    α = SVector{3, T}(WENO_GAMMA) ./ (T(1e-6) .+ β).^2
 
-    return s * dot(α, WENO_C * u) / sum(α)
+    return s * dot(α, SMatrix{3, 5, T}(WENO_C) * u) / sum(α)
 end
 
 
@@ -164,7 +167,7 @@ Compute electron fluxes.
             F = v * weno5(uu)
             
             # Consider only the advective flux for the computation of the Maxwell relax time
-            tmaxwell = (co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
+            tmaxwell = convert(typeof(F), co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
 
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h

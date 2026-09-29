@@ -4,11 +4,11 @@
 
 
 # Hard-coded interpolation weights for 2D and 3D
-@inline __w0(::Val{2}) = 1 / 2
-@inline __w1(::Val{2}) = 1 / 4
+@inline __w0(::Val{2}, ::Type{T}=Float64) where T = T(1 / 2)
+@inline __w1(::Val{2}, ::Type{T}=Float64) where T = T(1 / 4)
 
-@inline __w0(::Val{3}) = 1 / 4
-@inline __w1(::Val{3}) = 1 / 4
+@inline __w0(::Val{3}, ::Type{T}=Float64) where T = T(1 / 4)
+@inline __w1(::Val{3}, ::Type{T}=Float64) where T = T(1 / 4)
 
 @inline _first(x, y) = x
 
@@ -91,10 +91,10 @@ the value). Default is to overwrite.
                 # We will compute the value of cell in dest at this location
                 Jd = CartesianIndex(@ntuple $D d -> Jd0[d] + i_d)
                 
-                f = __w0(Val($D)) * src[Js]
+                f = __w0(Val($D), $T) * src[Js]
                 for j in 1:$D
                     #L = CartesianIndex(ntuple(d -> (i == d ? (2 * R[d] - 1) : 0), Val(D)))
-                    f += __w1(Val($D)) * @nref $D src d -> (d == j ? Js[d] + 2 * i_d - 1 : Js[d])
+                    f += __w1(Val($D), $T) * @nref $D src d -> (d == j ? Js[d] + 2 * i_d - 1 : Js[d])
                 end
                 dest[Jd] = func(f, dest[Jd])
             end

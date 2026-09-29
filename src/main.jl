@@ -2,12 +2,13 @@
 Code to process input data and start a simulation.
 =#
 
-const MINIMAL_TRANSPORT_MODEL = MinimalTransportModel(;μ = 0.0372193,
-                                                      D = 0.18,
-                                                      αi = 433200.0,
-                                                      Ei = 2e7,
-                                                      αa = 2000.0,
-                                                      Ea = 3e6)
+minimal_transport_model(::Type{T}=Float64) where T = MinimalTransportModel{T}(;μ = 0.0372193,
+                                                                                 D = 0.18,
+                                                                                 αi = 433200.0,
+                                                                                 Ei = 2e7,
+                                                                                 αa = 2000.0,
+                                                                                 Ea = 3e6)
+const MINIMAL_TRANSPORT_MODEL = minimal_transport_model()
 const MINIMAL_CHEMICAL_MODEL = NetIonization(MINIMAL_TRANSPORT_MODEL)
 const DATA_PATH = normpath(joinpath(@__DIR__, "../data"))
 const STP_AIR_DENSITY = co.nair
@@ -88,10 +89,10 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     phmodel = empty_photoionization(T)
     
     "Transport model."
-    trans = MINIMAL_TRANSPORT_MODEL
+    trans = minimal_transport_model(T)
     
     "Chemical model."
-    chem = MINIMAL_CHEMICAL_MODEL
+    chem = NetIonization(minimal_transport_model(T))
     
     "Gas density model."
     dens = TrivialDensityScaling()
@@ -319,7 +320,7 @@ function _main(input::InputParameters{T}) where T
 
     # Geometry of the problem and discretization for the Poisson equation.
     # CylindricalGeometry{d} indicates that d is treated as the radial coordinate
-    geom = (D == 2 ? CylindricalGeometry{1}(input.rootsize[1] * M * (1 << (refine_maxlevel - 1))) :
+    geom = (D == 2 ? CylindricalGeometry{1, T}(input.rootsize[1] * M * (1 << (refine_maxlevel - 1))) :
             CartesianGeometry())
     lpl = LaplacianDiscretization{D, input.poisson_order}()
 
@@ -327,8 +328,12 @@ function _main(input::InputParameters{T}) where T
         input.poisson_order == 4 ? BoxStencil{D}() :
         throw(ArgumentError("poisson_order = $(input.poisson_order) not allowed")))
         
+    # Float64 model parameters (e.g. BagheriTransportModel()) would promote the kernels.
+    trans = _convert_model(T, input.trans)
+    chem = _convert_model(T, input.chem)
+
     # The data struct that contains all streamer fields
-    fields = StreamerFields(T, nspecies(input.chem), length(input.phmodel), D, M, G, Val(input.storage))
+    fields = StreamerFields(T, nspecies(chem), length(input.phmodel), D, M, G, Val(input.storage))
     freebcinst = input.freebnd ? FreeBC(geom, fields.u, refine_maxlevel, input.rootsize, h) : nothing
     
     ###
@@ -336,7 +341,7 @@ function _main(input::InputParameters{T}) where T
     ###
     if isnothing(input.refinement)
         # The Teunissen refinement criterium based on the electric field
-        tref = TeunissenRef(fields.eabs, input.trans,
+        tref = TeunissenRef(fields.eabs, trans,
                             input.refine_teunissen_c0,
                             input.refine_teunissen_c1, input.dens)
     
@@ -365,15 +370,15 @@ function _main(input::InputParameters{T}) where T
     # Allow users to give eb as Vector. Performance impact sould be negligible as everything is done
     # below function boundaries.
     if input.eb isa AbstractVector
-        eb = SVector{length(input.eb)}(input.eb)
+        eb = SVector{length(input.eb), T}(input.eb)
     else
         eb = input.eb
     end
     
     # Set the streamer configuration
-    conf = StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, input.trans, fluxschem,
+    conf = StreamerConf(h, eb, geom, fbc, pbc, lpl, freebcinst, trans, fluxschem,
                         dens_ghost_interp, dens_refine_interp, poisson_ghost_interp,
-                        charge_ghost_interp, input.chem, input.phmodel, input.dens, ref, stencil,
+                        charge_ghost_interp, chem, input.phmodel, input.dens, ref, stencil,
                         input.dt_safety_factor, input.poisson_fmg, input.poisson_iter,
                         input.poisson_level_iter)
     

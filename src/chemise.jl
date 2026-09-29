@@ -53,6 +53,9 @@ end
 
 Reaction(s::String, k, g=nothing) = Reaction(parse(Signature, s), k, g)
 
+_convert_model(::Type{T}, r::Reaction{S, K, G}) where {T, S, K, G} =
+    Reaction(r.signature, _convert_model(T, r.k), G)
+
 isactive(::Type{Reaction{S, H, G}}, groups::Union{Tuple, Int}) where {S, H, G} = isempty(groups) || G in groups
 isactive(::Type{Reaction{S, H, G}}, groups::Symbol) where {S, H, G} = groups == G
 
@@ -87,6 +90,7 @@ struct Biblio{K, S <: AbstractString}
 end
 
 evalk(f::Biblio, args...) = evalk(f.k, args...)
+_convert_model(::Type{T}, f::Biblio) where T = Biblio(_convert_model(T, f.k), f.ref)
 
 
 """
@@ -155,6 +159,12 @@ function ReactionSet(reactions::Pair...; fixed=(), fixedval=(), fix=nothing)
 end
 
 ReactionSet(reactions::Vector; kw...) = ReactionSet(nothing => reactions; kw...)
+
+# Converts constant rates and fixed densities.  Lookup tables are kept: build them with
+# loadtable(..., T).
+_convert_model(::Type{T}, rs::ReactionSet{S, R, F}) where {T, S, R, F} =
+    ReactionSet(S, map(r -> _convert_model(T, r), rs.reactions), F,
+                map(x -> _convert_model(T, x), rs.fixedval))
 
 
 nspecies(rs::ReactionSet{S}) where {S} = length(S)

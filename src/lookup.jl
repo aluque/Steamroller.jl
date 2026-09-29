@@ -116,10 +116,11 @@ end
 """
 function loadtable(tbl, T::Type=Float64; resample_into=nothing,
                    xcol=1, ycols=nothing, f=identity, g=identity, ginv=identity, kw...)
-    fx = approxrange(f.(tbl[xcol]); kw...)
+    # Apply the transforms before converting to T, in case they avoid under/overflow in T.
+    fx = approxrange(T.(f.(tbl[xcol])); kw...)
     ycols = isnothing(ycols) ? keys(tbl) : ycols
     
-    gy = [g.(tbl[ycol]) for ycol in ycols]
+    gy = [T.(g.(tbl[ycol])) for ycol in ycols]
     
     if !isnothing(resample_into)
         fx1 = LinRange(fx[begin], fx[end], resample_into)

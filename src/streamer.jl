@@ -593,7 +593,9 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                     throw(ErrorException("dt below min_dt"))
                 end
                 
-                if !isempty(output) && isapprox(t, first(output))
+                # step! clamps dt to hit the output time, so t is only off by rounding.
+                # The default rtol=√eps(T) is larger than dt for Float32.
+                if !isempty(output) && isapprox(t, first(output); rtol=4 * eps(T))
                     _run_callbacks(output_callbacks, t, conf, fields, tree, conn)
                     popfirst!(output)
                 end

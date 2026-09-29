@@ -12,7 +12,7 @@ a stencil shift a factor for the laplacian term.
 abstract type AbstractGeometry end
 
 struct CartesianGeometry <: AbstractGeometry end
-@inline factor(::CartesianGeometry, c, d) = 1
+@inline factor(::CartesianGeometry, c, d, ::Type{T}=Float64) where T = one(T)
 factorexpr(::CartesianGeometry, c, d) = 1
 
 
@@ -26,20 +26,22 @@ Cylindrical geometry with radial dimension `D` (stored as a type parameter for p
 
 The coefficients of the 2nd-order radial stencil are tabulated by global radial cell index `i`
 (starting at 1 on the axis) to avoid two divisions per cell and sweep.  The tables cover
-`n` radial cells; use `n = rootsize[D] * M * 2^(maxlevel - 1)`.  They are `Float64` for any
-field type, as the divisions of `Int`s they replace.
+`n` radial cells; use `n = rootsize[D] * M * 2^(maxlevel - 1)`.  They are stored with
+type `T`, which should be the field type (Float64 tables would promote the stencils).
 """
-struct CylindricalGeometry{D} <: AbstractGeometry
+struct CylindricalGeometry{D, T} <: AbstractGeometry
     "(2i - 2) / (2i - 1): coefficient of the neighbor towards the axis"
-    cm::Vector{Float64}
+    cm::Vector{T}
 
     "2i / (2i - 1): coefficient of the neighbor away from the axis"
-    cp::Vector{Float64}
+    cp::Vector{T}
 
-    function CylindricalGeometry{D}(n::Integer=DEFAULT_CYLINDRICAL_CELLS) where D
-        new{D}([(2i - 2) / (2i - 1) for i in 1:n], [2i / (2i - 1) for i in 1:n])
+    function CylindricalGeometry{D, T}(n::Integer=DEFAULT_CYLINDRICAL_CELLS) where {D, T}
+        new{D, T}([T((2i - 2) / (2i - 1)) for i in 1:n], [T(2i / (2i - 1)) for i in 1:n])
     end
 end
+
+CylindricalGeometry{D}(n::Integer=DEFAULT_CYLINDRICAL_CELLS) where D = CylindricalGeometry{D, Float64}(n)
 
 
 """
@@ -63,10 +65,10 @@ checkblock(geom::CylindricalGeometry{D}, gbl0, M) where D = checkbounds(geom.cm,
 
 """
 Compute `r[i + δ/2]/r[i]` around coordinates given by `c`. r[i] is a cell 
-center; r[i + 1/2] is the cell edge.
+center; r[i + 1/2] is the cell edge.  The result has type `T`.
 """
-@inline function factor(::CylindricalGeometry{D}, c, δ) where D
-     abs(1 + δ[D] / (2 * c[D] - 1))
+@inline function factor(::CylindricalGeometry{D}, c, δ, ::Type{T}=Float64) where {D, T}
+     abs(1 + T(δ[D]) / T(2 * c[D] - 1))
 end
 
 # @inline function factor(::CylindricalGeometry{D}, c, d::Int) where D
@@ -82,7 +84,7 @@ Cell volume factor along dimension d of a cell with faces from f1 to f1 .+ h.  A
 dimension of a cylindrical geometry it is π((f1 + h)^2 - f1^2) = 2π h (f1 + h / 2).
 """
 @inline volfactor(::CartesianGeometry, d, f1, h) = h
-@inline volfactor(::CylindricalGeometry{D}, d, f1, h) where D = d == D ? 2π * h * (f1 + h / 2) : h
+@inline volfactor(::CylindricalGeometry{D}, d, f1, h) where D = d == D ? oftype(h, 2π) * h * (f1 + h / 2) : h
 
 
 """

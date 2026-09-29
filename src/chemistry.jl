@@ -91,6 +91,8 @@ struct NetIonization{TR <: AbstractTransportModel} <: AbstractChemistry
     trans::TR
 end
 
+_convert_model(::Type{T}, chem::NetIonization) where T = NetIonization(_convert_model(T, chem.trans))
+
 # Before computing photo-ionization: we only include ionization
 function derivs(chem::NetIonization, prephoto::Val{:pre}, n, x, eabs)
     # n[1] is the electron density
@@ -149,6 +151,8 @@ A reaction scheme based on the chemise.jl framework.
 struct Chemise{RS <: ReactionSet} <: AbstractChemistry
     rs::RS
 end
+
+_convert_model(::Type{T}, chem::Chemise) where T = Chemise(_convert_model(T, chem.rs))
 
 @inline species_charge(c::Chemise) = species_charge(c.rs)
 

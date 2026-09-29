@@ -254,7 +254,10 @@ end
 """
 Apply Gauss-Seidel to all blocks in a layer. 
 """
-function gauss_seidel_level!(u, b, ω, s, layer, ld, geometry, parity)
+function gauss_seidel_level!(u::ScalarBlockField{D, M, G, T}, b, ω, s, layer, ld, geometry,
+                             parity) where {D, M, G, T}
+    # A Float64 ω (the default) would promote every update to Float64.
+    ω = convert(T, ω)
     @pbatch for i in eachindex(layer.pairs)
         (coord, blk) = layer.pairs[i]
         gauss_seidel!(u, b, ω, s, coord, blk, ld, geometry, parity)
