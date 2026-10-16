@@ -141,15 +141,23 @@ end
 
 """
 Write into a file a julia expression with the fields and values of `v`.
+
+Values larger than `maxsize` bytes in memory (e.g. models with large lookup tables) are not
+written; a comment with their summary is written instead.
 """
-function writejl(io::IO, v)
+function writejl(io::IO, v; maxsize=1_000)
     expr = quote end
     
     for (sym, val) in pairs(ntfromstruct(v))
+        if Base.summarysize(val) > maxsize
+            push!(expr.args, Expr(:call, :__omitted__, sym, summary(val)))
+            continue
+        end
         rval = val isa Symbol ? QuoteNode(val) : val
         push!(expr.args, :($sym = $rval))
     end
-    print(io, expr)
+    print(io, replace(sprint(print, expr),
+                      r"__omitted__\(:?(\w+), (\".*\")\)" => s"# \1 omitted (too large): \2"))
 end
 
 

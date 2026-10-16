@@ -10,6 +10,20 @@ using DelimitedFiles
 
 const allowed = [:T, Steamroller.allowedinps(Steamroller.InputParameters)...]
 
+struct LargeValue
+    x::Vector{Float64}
+end
+
+@testset "writejl omits large values" begin
+    io = IOBuffer()
+    Steamroller.writejl(io, (a=1, b=:koren, c=LargeValue(zeros(100_000)), d=[1.0, 2.0]))
+    s = String(take!(io))
+    @test occursin("a = 1", s)
+    @test occursin("b = :koren", s)
+    @test occursin("# c omitted (too large)", s)
+    @test occursin("d = [1.0, 2.0]", s)
+end
+
 @testset "Input files" begin
     mktempdir() do dir
         mkpath(joinpath(dir, "lib", "sub"))
