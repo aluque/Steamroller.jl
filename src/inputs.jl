@@ -208,7 +208,19 @@ end
 
 
 
+"Values above this size in memory are not printed in full by `pprint`."
+const PPRINT_MAXSIZE = 1_000
+
+function _pprint_omit(io::IO, s, level)
+    (level > 0 && Base.summarysize(s) > PPRINT_MAXSIZE) || return false
+    typename = string(Base.typename(typeof(s)).wrapper)
+    printstyled(io, typename, "{…} (omitted, $(Base.format_bytes(Base.summarysize(s))))\n",
+                color=:light_green)
+    return true
+end
+
 function pprint(io::IO, s, level=0)
+    _pprint_omit(io, s, level) && return nothing
     typename = string(typeof(s))
     if length(typename) > 20
         typename = string(Base.typename(typeof(s)).wrapper) * "{…}"
@@ -228,6 +240,7 @@ function pprint(io::IO, s, level=0)
 end
 
 function pprint(io::IO, s::AbstractVector, level=0)
+    _pprint_omit(io, s, level) && return nothing
     print(io, "\n")
     for k in eachindex(s)
         v = getindex(s, k)
@@ -242,6 +255,7 @@ end
 
 
 function pprint(io::IO, s::Union{Number, AbstractString, AbstractRange, Tuple, Nothing, Symbol, DateTime}, level=0)
+    _pprint_omit(io, s, level) && return nothing
     printstyled(io, repr(s) * "\n", color=:blue) 
 end
 
