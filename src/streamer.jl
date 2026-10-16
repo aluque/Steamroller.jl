@@ -418,6 +418,49 @@ end
 
 
 """
+Runge-Kutta stage update `out[k] = n[k] + (c[1] dn[1][k] + c[2] dn[2][k] + ...)` for all species
+`k`, in the valid cells of leaf blocks only.  Parents and ghosts are not needed: derivs! restricts
+and fills the ghosts of what it reads and the step ends restricting and filling all species.
+`out` may be `n`.  The order of the floating-point operations is that of the equivalent
+broadcast.
+"""
+@bkernel function rkcombine!((tree, level, blkpos, blk), out, n, dn, c)
+    isleaf(tree, level, blkpos) || return
+    @inbounds for k in eachindex(out)
+        _rkcombine_block!(out[k], n[k], map(d -> d[k], dn), c, blk)
+    end
+end
+
+# Contiguous storage: index the underlying memory directly (indexing the ElasticArray is several
+# times slower).
+@inline function _rkcombine_block!(o::_ScalarBlockFieldA, a::_ScalarBlockFieldA, d::NTuple{S},
+                                   c::NTuple{S}, blk) where {S}
+    li = LinearIndices(blksizeghost(o))
+    off = (blk - 1) * length(li)
+    od, ad = o.u.data, a.u.data
+    dd = map(x -> x.u.data, d)
+    @inbounds for I in validindices(o)
+        j = off + li[I]
+        inc = dd[1][j] * c[1]
+        for s in 2:S
+            inc += dd[s][j] * c[s]
+        end
+        od[j] = ad[j] + inc
+    end
+end
+
+@inline function _rkcombine_block!(o, a, d::NTuple{S}, c::NTuple{S}, blk) where {S}
+    @inbounds for I in validindices(o)
+        inc = d[1][I, blk] * c[1]
+        for s in 2:S
+            inc += d[s][I, blk] * c[s]
+        end
+        o[I, blk] = a[I, blk] + inc
+    end
+end
+
+
+"""
 Perform a single step of the time integration.
 
 # Arguments
@@ -439,24 +482,16 @@ function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
 
     # Compute the dt
     dt = min(tmax - t, dt_safety_factor * mapreduce_tree((lvl, I, blk) -> maxdt[blk], min, tree, typemax(T)))
-    for s in 1:K
-        n1[s] .= n[s] .+ dn[1][s] .* dt
-    end
+    rkcombine!(tree, n1, n, (dn[1],), (dt,))
         
     derivs!(dn[2], n1, t + dt, fld, conf, tree, conn)
     dt1 = dt / 4
 
-    for s in 1:K
-        # Here and below there's some bug in VectorOfArray that adds a lot of overhead in broadcasting
-        # if I remove the brackets.
-        n1[s] .= n[s] .+ (dn[1][s] .* dt1 .+ dn[2][s] .* dt1)
-    end
+    rkcombine!(tree, n1, n, (dn[1], dn[2]), (dt1, dt1))
 
     derivs!(dn[3], n1, t + dt / 2, fld, conf, tree, conn)
 
-    for s in 1:K
-        n[s] .= n[s] .+ (dn[1][s] .* (dt / 6) .+ dn[2][s] .* (dt / 6) .+ dn[3][s] .* (2 * dt / 3))
-    end
+    rkcombine!(tree, n, n, (dn[1], dn[2], dn[3]), (dt / 6, dt / 6, 2 * dt / 3))
 
     setmcphotosrc!(conf.phmodel, fld, dt, stepper)
     mcphoto!(tree, conf.phmodel, fld, conf.h, conf.geom)
