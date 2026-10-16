@@ -565,7 +565,8 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
               derefine_minlevel=3, refine_maxlevel=10,
               refine_every=2, progress_every=50,
               output_callbacks=(),
-              onerror=()) where {T}
+              onerror=(),
+              stop_condition=nothing) where {T}
     (;stencil, h) = conf
     output = map(x->convert(T, x), output)
 
@@ -598,6 +599,11 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 if !isempty(output) && isapprox(t, first(output); rtol=4 * eps(T))
                     _run_callbacks(output_callbacks, t, conf, fields, tree, conn)
                     popfirst!(output)
+
+                    if !isnothing(stop_condition) && stop_condition(t, conf, fields, tree, conn)
+                        @info "Stop condition met" t
+                        break
+                    end
                 end
                 
                 if (iter % refine_every) == 0

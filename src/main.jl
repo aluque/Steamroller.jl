@@ -190,6 +190,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Input file"
     _input::String = ""
 
+    "Files included from the input files (copied to the output folder)."
+    _included::Vector{String} = String[]
+
     "Name for the simulation."
     name::String = replace(basename(_input), r"(\.in)?\.jl$" => "")
 
@@ -201,6 +204,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
 
     "Functions to call at output snapshots."
     output_callbacks=()
+
+    "Function `(t, conf, fields, tree, conn) -> Bool` checked at output times; the run stops when it returns `true`."
+    stop_condition = nothing
 
     "Whether this is a debug run"
     debug = false
@@ -238,9 +244,13 @@ function (@main)(ARGS; kw...)
     
     allowed = [:T, allowedinps(_main)..., allowedinps(InputParameters)...]
     input = Dict{Symbol, Any}(:T => Float64)
+    included = String[]
     for input_file in args["input_file"]
-        merge!(input, read_input(input_file, allowed))
+        inp = read_input(input_file, allowed)
+        append!(included, get(inp, :_included, String[]))
+        merge!(input, inp)
     end
+    input[:_included] = unique(included)
     
     merge!(input, pairs(kw))
 
@@ -261,7 +271,9 @@ function (@main)(ARGS; kw...)
 
     local ret
     with_logger(TerminalLogger(meta_formatter=metafmt)) do
-        ret = _main(params1)
+        # Through invokelatest so that functions defined in the input files (newer than this
+        # method) can be called within the simulation.
+        ret = Base.invokelatest(_main, params1)
     end
 
     if params1.debug
@@ -443,12 +455,30 @@ function _main(input::InputParameters{T}) where T
 
         writejl(joinpath(input.outfolder, input.name * ".ref.jl"), input)
         cp(input._input, joinpath(input.outfolder, input.name * ".in.jl"))
+        _archive_included(input._included, input.outfolder)
     
         run!(fields, conf, tree, conn, input.tend; progress_every=10, input.output,
              derefine_minlevel,
              refine_maxlevel,
-             output_callbacks, onerror)
+             output_callbacks, onerror, input.stop_condition)
     end
 
     return NamedTuple(Base.@locals)
+end
+
+
+"""
+Copy the files in `included` into `outfolder/included`, together with a list of their original
+paths. Files with repeated names are prefixed with their position in the list.
+"""
+function _archive_included(included, outfolder)
+    isempty(included) && return
+    dir = joinpath(outfolder, "included")
+    mkpath(dir)
+    names = basename.(included)
+    for (i, (path, name)) in enumerate(zip(included, names))
+        target = count(==(name), names) > 1 ? "$(i)-$(name)" : name
+        cp(path, joinpath(dir, target); force=true)
+    end
+    write(joinpath(dir, "paths.txt"), join(included, "\n") * "\n")
 end

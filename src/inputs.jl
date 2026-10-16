@@ -27,27 +27,43 @@ function read_input(finput::String, allowed)
     return input
 end
 
-function _include_inp(mod, file)
-    @eval mod include($file)
+"""
+Include `path` into the input module `mod`, recording its absolute path in `included`.
+
+As with `Base.include`, a relative `path` is resolved against the directory of the file that is
+being included, so nested includes work.
+"""
+function _include_inp(mod, included, path::AbstractString)
+    prev = Base.source_path(nothing)
+    fullpath = isnothing(prev) ? abspath(path) : normpath(joinpath(dirname(prev), path))
+    push!(included, fullpath)
+    Base.include(mod, fullpath)
 end
 
 """
 Read a julia input file and produces a `NamedTuple` with the values defined there that are also
 kwargs of the function `f` or fields if `f` is a type.
+
+Input files may `include` other files (resolved relative to the including file); their paths are
+returned in `_included` so that they can be archived with the simulation output.
 """
 function readjl(input::String, allowed)
     M = Module(gensym())
     Core.eval(M, :(using Steamroller))
     Core.eval(M, :(const co = Steamroller.co))
-    
-    Core.include(M, abspath(input))
+
+    included = String[]
+    Core.eval(M, :(include(path::AbstractString) = $_include_inp($M, $included, path)))
+
+    # Base.include (unlike Core.include) sets the source path that nested includes resolve against.
+    Base.include(M, abspath(input))
     
     # The @invokelatest here is needed because the bindings in M are too new to be captured
     # at the time where the method was defined.
-    @invokelatest _readjl(input, allowed, M)
+    @invokelatest _readjl(input, allowed, M, included)
 end
 
-function _readjl(input, allowed, M::Module)
+function _readjl(input, allowed, M::Module, included=String[])
     p = Dict{Symbol, Any}()
 
     for sym in names(M, all=true)
@@ -68,6 +84,10 @@ function _readjl(input, allowed, M::Module)
         hash, dirty = git_commit()
         push!(p, :_git_commit => hash)
         push!(p, :_git_dirty => dirty)
+    end
+
+    if :_included in allowed
+        push!(p, :_included => unique(included))
     end
         
     return p
