@@ -205,7 +205,7 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     "Functions to call at output snapshots."
     output_callbacks=()
 
-    "Function `(t, conf, fields, tree, conn) -> Bool` checked at output times; the run stops when it returns `true`."
+    "Function `(t, conf, fields, tree, conn) -> Bool` checked at output times; run stops if true."
     stop_condition = nothing
 
     "Whether this is a debug run"
@@ -271,8 +271,7 @@ function (@main)(ARGS; kw...)
 
     local ret
     with_logger(TerminalLogger(meta_formatter=metafmt)) do
-        # Through invokelatest so that functions defined in the input files (newer than this
-        # method) can be called within the simulation.
+        # invokelatest allows functions newer than this to be called within the simulation.
         ret = Base.invokelatest(_main, params1)
     end
 
