@@ -145,10 +145,37 @@ _length(u::ElasticArray) = size(u, ndims(u))
 _length(u::Vector{<:AbstractArray}) = length(u)
 Base.length(f::AbstractBlockField) = _length(f.u)
 
-@propagate_inbounds Base.getindex(f::_ScalarBlockFieldA, c::CartesianIndex, i::Integer) = f.u[c, i]
-@propagate_inbounds Base.getindex(f::_VectorBlockFieldA, c::CartesianIndex, d::Integer, i::Integer) = f.u[c, d, i]
-@propagate_inbounds Base.setindex!(f::_ScalarBlockFieldA, v, c::CartesianIndex, i::Integer) = f.u[c, i] = v
-@propagate_inbounds Base.setindex!(f::_VectorBlockFieldA, v, c::CartesianIndex, d::Integer, i::Integer) = f.u[c, d, i] = v
+#=
+With contiguous storage the cell (c, i) is found from compile-time strides.  Indexing the
+ElasticArray instead recomputes its size, with a division, at every access, which is several
+times slower in the kernels.  Out-of-range indices are caught by the bounds check on the data.
+=#
+@inline function _blkoffset(::ScalarBlockField{D, M, G}, c::CartesianIndex{D}, i) where {D, M, G}
+    S = M + 2G
+    j = i - 1
+    for d in D:-1:1
+        j = j * S + (c[d] - 1)
+    end
+    return j + 1
+end
+
+@inline function _blkoffset(::VectorBlockField{D, M, G}, c::CartesianIndex{D}, d1, i) where {D, M, G}
+    S = M + 2G + 1
+    j = (i - 1) * D + (d1 - 1)
+    for d in D:-1:1
+        j = j * S + (c[d] - 1)
+    end
+    return j + 1
+end
+
+@propagate_inbounds Base.getindex(f::_ScalarBlockFieldA{D}, c::CartesianIndex{D}, i::Integer) where {D} =
+    f.u.data[_blkoffset(f, c, i)]
+@propagate_inbounds Base.getindex(f::_VectorBlockFieldA{D}, c::CartesianIndex{D}, d::Integer, i::Integer) where {D} =
+    f.u.data[_blkoffset(f, c, d, i)]
+@propagate_inbounds Base.setindex!(f::_ScalarBlockFieldA{D}, v, c::CartesianIndex{D}, i::Integer) where {D} =
+    (f.u.data[_blkoffset(f, c, i)] = v)
+@propagate_inbounds Base.setindex!(f::_VectorBlockFieldA{D}, v, c::CartesianIndex{D}, d::Integer, i::Integer) where {D} =
+    (f.u.data[_blkoffset(f, c, d, i)] = v)
 
 @propagate_inbounds Base.getindex(f::_ScalarBlockFieldV, c::CartesianIndex, i::Integer) = f.u[i][c]
 @propagate_inbounds Base.getindex(f::_VectorBlockFieldV, c::CartesianIndex, d::Integer, i::Integer) = f.u[i][c, d]
