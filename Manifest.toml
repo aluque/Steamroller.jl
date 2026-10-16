@@ -1022,7 +1022,7 @@ weakdeps = ["ChainRulesCore", "InverseFunctions"]
     StatsFunsInverseFunctionsExt = "InverseFunctions"
 
 [[deps.Steamroller]]
-deps = ["ArgParse", "CSV", "DataFrames", "DataStructures", "Dates", "DelimitedFiles", "Distributions", "DocStringExtensions", "ElasticArrays", "FFTW", "Format", "Interpolations", "JLD2", "LibGit2", "LinearAlgebra", "Logging", "LoopVectorization", "MacroTools", "NamedTupleTools", "Polyester", "Printf", "ProgressLogging", "RecursiveArrayTools", "Revise", "SpecialFunctions", "StaticArrays", "TOML", "TerminalLoggers"]
+deps = ["ArgParse", "Atomix", "CSV", "DataFrames", "DataStructures", "Dates", "DelimitedFiles", "Distributions", "DocStringExtensions", "ElasticArrays", "FFTW", "Format", "Interpolations", "JLD2", "LibGit2", "LinearAlgebra", "Logging", "LoopVectorization", "MacroTools", "NamedTupleTools", "Polyester", "Printf", "ProgressLogging", "RecursiveArrayTools", "Revise", "SpecialFunctions", "StaticArrays", "TOML", "TerminalLoggers"]
 path = "."
 uuid = "4202647a-944a-4cb5-9370-c8cf7ed7c69c"
 version = "0.1.0"
