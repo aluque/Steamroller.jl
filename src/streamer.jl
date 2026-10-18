@@ -624,7 +624,9 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 
                 elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t, tfinal,
                                                          Val(:ssprk3))
-                if t > 0 && dt < min_dt
+                # Last check is because sometimes the time step is cut short of an output point
+                # and make produce a tiny dt alhtough that is ok.
+                if t > 0 && dt < min_dt && !isapprox(t, tfinal; rtol=4 * eps(T))
                     @error "dt is below the minimal allowed min_dt.  Stopping the iterations here." dt min_dt
                     throw(ErrorException("dt below min_dt"))
                 end
