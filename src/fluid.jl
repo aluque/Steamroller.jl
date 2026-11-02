@@ -38,11 +38,19 @@ needghost(::FluxSchemeKoren) = 2
 needghost(::FluxSchemeWENO) = 4
 
 
+"""
+Time-step limits at a face: `(advection-diffusion limit, dielectric relaxation time)`.
+They are kept apart because only the first one is scaled by the SSP coefficient of the stepper.
+"""
 @inline function face_maxdt(::Val{D}, h, v, diff, μ, nmax) where {D}
     rate = D * abs(v) / h + 2 * D * diff / h^2
     tmaxwell = convert(typeof(rate), co.epsilon_0 / co.elementary_charge) / (μ * nmax)
-    return min(inv(rate), tmaxwell)
+    return (inv(rate), tmaxwell)
 end
+
+
+# Componentwise min of two time-step limits, rounded to the element type `S` of maxdt.
+@inline _mindt(::Type{S}, a, b) where {S} = map((x, y) -> convert(S, min(x, y)), a, b)
 
 
 """
@@ -59,7 +67,8 @@ Compute electron fluxes.
     gbl0 = global_first(blkpos, M)
     h /= 1 << (level - 1)
     # Local accumulator; the convert reproduces the rounding of storing into maxdt at every face.
-    mdt = convert(eltype(maxdt), Inf)
+    S = eltype(eltype(maxdt))
+    mdt = (convert(S, Inf), convert(S, Inf))
     
     @inbounds for d in 1:D
         for I in validindices(e, d)
@@ -91,7 +100,7 @@ Compute electron fluxes.
 
             # abs: tolerate slightly negative densities
             nmax = max(abs(ne[I, blk]), abs(ne[I1, blk]))
-            mdt = convert(eltype(maxdt), min(mdt, face_maxdt(Val(D), h, v, diff, μ, nmax)))
+            mdt = _mindt(S, mdt, face_maxdt(Val(D), h, v, diff, μ, nmax))
         end
     end
     maxdt[blk] = mdt
@@ -143,7 +152,8 @@ Compute electron fluxes.
     h /= 1 << (level - 1)
     @assert G >= 3
     # Local accumulator; the convert reproduces the rounding of storing into maxdt at every face.
-    mdt = convert(eltype(maxdt), Inf)
+    S = eltype(eltype(maxdt))
+    mdt = (convert(S, Inf), convert(S, Inf))
     
     @inbounds for d in 1:D
         for I in validindices(e, d)
@@ -174,7 +184,7 @@ Compute electron fluxes.
 
             # abs: tolerate slightly negative densities
             nmax = max(abs(ne[I, blk]), abs(ne[I1, blk]))
-            mdt = convert(eltype(maxdt), min(mdt, face_maxdt(Val(D), h, v, diff, μ, nmax)))
+            mdt = _mindt(S, mdt, face_maxdt(Val(D), h, v, diff, μ, nmax))
         end
     end
     maxdt[blk] = mdt

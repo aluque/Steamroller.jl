@@ -61,7 +61,8 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
 
     flux_same_as_e::Bool
 
-    maxdt::Vector{T}
+    "Per-block time-step limits: (advection-diffusion, dielectric relaxation)"
+    maxdt::Vector{NTuple{2, T}}
 
     "Available blocks"
     freeblocks::Vector{Int}
@@ -94,7 +95,7 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
         m = ScalarBlockField{D, M, 3, T}(storage)
         refdelta = ScalarBlockField{D, 1, 0, RefDelta}(Val(:contiguous))
 
-        maxdt = Vector{T}(undef, 2^14)
+        maxdt = Vector{NTuple{2, T}}(undef, 2^14)
         freeblocks = Int[]
         
         return new{
