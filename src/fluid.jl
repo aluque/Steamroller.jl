@@ -38,6 +38,13 @@ needghost(::FluxSchemeKoren) = 2
 needghost(::FluxSchemeWENO) = 4
 
 
+@inline function face_maxdt(::Val{D}, h, v, diff, μ, nmax) where {D}
+    rate = D * abs(v) / h + 2 * D * diff / h^2
+    tmaxwell = convert(typeof(rate), co.epsilon_0 / co.elementary_charge) / (μ * nmax)
+    return min(inv(rate), tmaxwell)
+end
+
+
 """
 Compute electron fluxes.
 """
@@ -78,18 +85,13 @@ Compute electron fluxes.
             F = v * (ne[Iu, blk] + koren_limited(ne[Iu, blk] - ne[Iu2, blk],
                                                  ne[Id, blk] - ne[Iu, blk]))            
 
-            # Consider only the advective flux for the computation of the Maxwell relax time
-            tmaxwell = convert(typeof(F), co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
-
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h
             flux[I, d, blk] = F
 
-            # Compute max dt from CFL, diffusion and Maxwell relaxation)
-            mdt = convert(eltype(maxdt), min(mdt,
-                                             h / abs(v),
-                                             h^2 / diff / 4,
-                                             tmaxwell))
+            # abs: tolerate slightly negative densities
+            nmax = max(abs(ne[I, blk]), abs(ne[I1, blk]))
+            mdt = convert(eltype(maxdt), min(mdt, face_maxdt(Val(D), h, v, diff, μ, nmax)))
         end
     end
     maxdt[blk] = mdt
@@ -166,18 +168,13 @@ Compute electron fluxes.
 
             F = v * weno5(uu)
             
-            # Consider only the advective flux for the computation of the Maxwell relax time
-            tmaxwell = convert(typeof(F), co.epsilon_0 / co.elementary_charge) * eabs1 / abs(F)
-
             # The diffusion flux
             F += diff * (ne[I1, blk] - ne[I, blk]) / h
             flux[I, d, blk] = F
 
-            # Compute max dt from CFL, diffusion and Maxwell relaxation)
-            mdt = convert(eltype(maxdt), min(mdt,
-                                             h / abs(v),
-                                             h^2 / diff / 4,
-                                             tmaxwell))
+            # abs: tolerate slightly negative densities
+            nmax = max(abs(ne[I, blk]), abs(ne[I1, blk]))
+            mdt = convert(eltype(maxdt), min(mdt, face_maxdt(Val(D), h, v, diff, μ, nmax)))
         end
     end
     maxdt[blk] = mdt
