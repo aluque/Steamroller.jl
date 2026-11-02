@@ -155,15 +155,21 @@ bourdon3(T=Float64, D=2) = bourdon(T,
                                    D)
 
 
-function setmcphotosrc!(model::MontecarloPhotoionizationModel, fld,
-                        dt, stepper::Val{:ssprk3})
-    (;photo, dn) = fld
+"""
+Accumulate `w * dni[source]` into the Monte Carlo photo-ionization source `photo[1]`, overwriting
+it if `init`.  Time steppers call this once per stage with `w = dt * b` (`b` the stage weight), so
+at the end of a step `photo[1]` holds the production of the source species during the step.
+"""
+function addmcphotosrc!(model::MontecarloPhotoionizationModel, photo, dni, w, init)
     s = model.source
-    
-    photo[1] .= dn[1][s] .* (dt / 6) .+ dn[2][s] .* (dt / 6) .+ dn[3][s] .* (2 * dt / 3)
+    if init
+        photo[1] .= dni[s] .* w
+    else
+        photo[1] .= photo[1] .+ dni[s] .* w
+    end
 end
 
-setmcphotosrc!(::FluidPhotoionizationModel, fld, args...) = nothing
+addmcphotosrc!(::FluidPhotoionizationModel, photo, dni, w, init) = nothing
 
 """
 Add photo ionization production. The field fields.photo[1] must be filled with the "source" field;

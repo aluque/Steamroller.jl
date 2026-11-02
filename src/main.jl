@@ -167,6 +167,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     
     "A safety factor for time integration."
     dt_safety_factor::T = 0.8
+
+    "Time stepper (:euler / :midpoint / :heun / :ssprk3 / :ssprk43)."
+    time_stepper::Symbol = :ssprk3
     
     "Output times."
     output = 0:1e-9:16e-9
@@ -344,7 +347,9 @@ function _main(input::InputParameters{T}) where T
     chem = _convert_model(T, input.chem)
 
     # The data struct that contains all streamer fields
-    fields = StreamerFields(T, nspecies(chem), length(input.phmodel), D, M, G, Val(input.storage))
+    stepper = timestepper(input.time_stepper)
+    fields = StreamerFields(T, nspecies(chem), length(input.phmodel), D, M, G, Val(input.storage);
+                            stepper)
     freebcinst = input.freebnd ? FreeBC(geom, fields.u, refine_maxlevel, input.rootsize, h) : nothing
     
     ###
@@ -456,7 +461,7 @@ function _main(input::InputParameters{T}) where T
         cp(input._input, joinpath(input.outfolder, input.name * ".in.jl"))
         _archive_included(input._included, input.outfolder)
     
-        run!(fields, conf, tree, conn, input.tend; progress_every=10, input.output,
+        run!(fields, conf, tree, conn, stepper, input.tend; progress_every=10, input.output,
              derefine_minlevel,
              refine_maxlevel,
              output_callbacks, onerror, input.stop_condition)

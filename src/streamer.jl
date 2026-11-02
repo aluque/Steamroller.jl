@@ -20,10 +20,10 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
     "Species density"
     n::SVector{K, S}
 
-    "Intermediate species density"
-    n1::SVector{K, S}
-    
-    "Derivatives of the densities (several of them b.c. we use RK)"
+    "Intermediate species densities (as many as the time stepper needs)"
+    n1::Vector{SVector{K, S}}
+
+    "Derivatives of the densities (as many as the time stepper needs)"
     dn::Vector{SVector{K, S}}
         
     "Charge density"
@@ -67,13 +67,15 @@ struct StreamerFields{T, K, L, S <: ScalarBlockField,
     freeblocks::Vector{Int}
     
     """
-    Initialize a `StreamerFields` instance.
+    Initialize a `StreamerFields` instance.  Only the intermediate densities and derivatives
+    required by `stepper` are allocated.
     """
-    function StreamerFields(T, K, L, D, M, G, storage=Val(:contiguous), flux_same_as_e=false)
+    function StreamerFields(T, K, L, D, M, G, storage=Val(:contiguous), flux_same_as_e=false;
+                            stepper=SSPRK3())
         kscalars(k) = SVector{K}(ntuple(i -> ScalarBlockField{D, M, G, T}(storage), Val(K)))
         n = kscalars(K)
-        n1 = kscalars(K)
-        dn = [kscalars(K) for _ in 1:3]
+        n1 = [kscalars(K) for _ in 1:nstates(stepper)]
+        dn = [kscalars(K) for _ in 1:nderivs(stepper)]
         
         q = ScalarBlockField{D, M, G, T}(storage)
         q1 = ScalarBlockField{D, M, G, T}(storage)
@@ -123,7 +125,9 @@ function newblock!(sf::StreamerFields, j0=nothing)
     !isnothing(j0) && @assert(j0 == j)
     
     foreach(i->newblock!(n[i], j), eachindex(n))
-    foreach(i->newblock!(n1[i], j), eachindex(n1))
+    for n1i in n1
+        foreach(i->newblock!(n1i[i], j), eachindex(n1i))
+    end
     for dni in dn
         foreach(i->newblock!(dni[i], j), eachindex(dni))
     end
@@ -151,7 +155,12 @@ function newblock!(sf::StreamerFields, j0=nothing)
         
         for i in eachindex(n)
             n[i][j] .= NaN
-            n1[i][j] .= NaN
+        end
+
+        for n1i in n1
+            for n1ii in n1i
+                n1ii[j] .= NaN
+            end
         end
         
         for i in eachindex(photo)
@@ -418,97 +427,6 @@ end
 
 
 """
-Runge-Kutta stage update `out[k] = n[k] + (c[1] dn[1][k] + c[2] dn[2][k] + ...)` for all species
-`k`, in the valid cells of leaf blocks only.  Parents and ghosts are not needed: derivs! restricts
-and fills the ghosts of what it reads and the step ends restricting and filling all species.
-`out` may be `n`.  The order of the floating-point operations is that of the equivalent
-broadcast.
-"""
-@bkernel function rkcombine!((tree, level, blkpos, blk), out, n, dn, c)
-    isleaf(tree, level, blkpos) || return
-    @inbounds for k in eachindex(out)
-        _rkcombine_block!(out[k], n[k], map(d -> d[k], dn), c, blk)
-    end
-end
-
-# Contiguous storage: index the underlying memory directly (indexing the ElasticArray is several
-# times slower).
-@inline function _rkcombine_block!(o::_ScalarBlockFieldA, a::_ScalarBlockFieldA, d::NTuple{S},
-                                   c::NTuple{S}, blk) where {S}
-    li = LinearIndices(blksizeghost(o))
-    off = (blk - 1) * length(li)
-    od, ad = o.u.data, a.u.data
-    dd = map(x -> x.u.data, d)
-    @inbounds for I in validindices(o)
-        j = off + li[I]
-        inc = dd[1][j] * c[1]
-        for s in 2:S
-            inc += dd[s][j] * c[s]
-        end
-        od[j] = ad[j] + inc
-    end
-end
-
-@inline function _rkcombine_block!(o, a, d::NTuple{S}, c::NTuple{S}, blk) where {S}
-    @inbounds for I in validindices(o)
-        inc = d[1][I, blk] * c[1]
-        for s in 2:S
-            inc += d[s][I, blk] * c[s]
-        end
-        o[I, blk] = a[I, blk] + inc
-    end
-end
-
-
-"""
-Perform a single step of the time integration.
-
-# Arguments
-- `fld::StreamerFields`: the fields to be updated.
-- `conf::StreamerConf`: the streamer configuration.
-- `tree`: a `Tree` instance containing the tree.
-- `conn`: connectivity pattern of the tree.
-- `dt`: time step.
-"""
-function step!(fld::StreamerFields{T, K}, conf::StreamerConf{T}, tree, conn,
-               t, tmax, stepper::Val{:ssprk3}) where {T, K}
-    (;dn, n, n1, maxdt) = fld
-    (;dt_safety_factor, fbc, dens_ghost_interp) = conf
-
-    maxdt .= typemax(eltype(maxdt))
-    
-    ## This is SSPRK (3rd order SSP Runge-Kutta).
-    derivs!(dn[1], n, t, fld, conf, tree, conn)
-
-    # Compute the dt
-    dt = min(tmax - t, dt_safety_factor * mapreduce_tree((lvl, I, blk) -> maxdt[blk], min, tree, typemax(T)))
-    rkcombine!(tree, n1, n, (dn[1],), (dt,))
-        
-    derivs!(dn[2], n1, t + dt, fld, conf, tree, conn)
-    dt1 = dt / 4
-
-    rkcombine!(tree, n1, n, (dn[1], dn[2]), (dt1, dt1))
-
-    derivs!(dn[3], n1, t + dt / 2, fld, conf, tree, conn)
-
-    rkcombine!(tree, n, n, (dn[1], dn[2], dn[3]), (dt / 6, dt / 6, 2 * dt / 3))
-
-    setmcphotosrc!(conf.phmodel, fld, dt, stepper)
-    mcphoto!(tree, conf.phmodel, fld, conf.h, conf.geom)
-    
-    lmax = finestlevel(tree)::Int
-    for s in 1:K
-        restrict_full!(n[s], conn)
-        for l in 1:lmax
-            fill_ghost!(n[s], l, conn, fbc, dens_ghost_interp)
-        end
-    end
-        
-    return (t + dt, dt)
-end
-
-
-"""
 Refine and derefine the tree according to the refinement criterium (`conf.ref` unless `ref`
 is given).  Pass `fill_ghosts=false` if the density ghosts are already up to date (as they are
 after `step!`).  Returns `true` if any block was added or removed.
@@ -593,9 +511,10 @@ end
 
 
 """
-Execute the full streamer simulation.
+Execute the full streamer simulation up to `tend`, advancing in time with `stepper`
+(an `AbstractTimeStepper`).  `fields` must have been allocated for that stepper.
 """
-function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
+function run!(fields::StreamerFields{T}, conf, tree, conn, stepper, tend;
               min_dt=1e-16, output=[],
               derefine_minlevel=3, refine_maxlevel=10,
               refine_every=2, progress_every=50,
@@ -623,7 +542,7 @@ function run!(fields::StreamerFields{T}, conf, tree, conn, tend;
                 tfinal = get(output, 1, convert(T, Inf))
                 
                 elapsed_step += @elapsed (t, dt) = step!(fields, conf, tree, conn, t, tfinal,
-                                                         Val(:ssprk3))
+                                                         stepper)
                 # Last check is because sometimes the time step is cut short of an output point
                 # and make produce a tiny dt alhtough that is ok.
                 if t > 0 && dt < min_dt && !isapprox(t, tfinal; rtol=4 * eps(T))
