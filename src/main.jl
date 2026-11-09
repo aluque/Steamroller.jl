@@ -114,6 +114,9 @@ const TOWNSEND_STP_AIR = co.Td * STP_AIR_DENSITY
     
     "Refine where density is above this in the density criterium."
     refine_density_value::T = 1e17
+
+    "Index of the species used in the density criterium (usually the main positive ion)."
+    refine_density_species::Int = 2
     
     "Do not derefine if the resulting spacing is larger than this."
     derefine_max_h::T = 20e-6
@@ -367,7 +370,8 @@ function _main(input::InputParameters{T}) where T
         end
 
         # A refinement creiterium based on the density of some species (here ions)    
-        nref = DensityRef(fields.n[2], input.refine_density_value, input.refine_density_h)
+        nref = DensityRef(fields.n[input.refine_density_species], input.refine_density_value,
+                          input.refine_density_h)
         
         # We combine the previous criteria for a final one, including a persistence and
         # a time-limited version of the initial criterium.
