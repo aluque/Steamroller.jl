@@ -106,7 +106,7 @@ function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, 
 
     mul!(u1, rodft10, u1)
     # This is to make it compatible with the r2r definition of FFTW
-    am[end] *= 3
+    u1[end] *= 3
     @. am = f * u1    
     
     mul!(am, rodft01, am)
