@@ -177,7 +177,8 @@ Finds the root directory of a Git repository given a starting directory.
 function find_git_root(start_dir::String)
     current_dir = start_dir
     while current_dir != "/"
-        if isdir(joinpath(current_dir, ".git"))
+        # .git is a file in worktrees and submodules
+        if ispath(joinpath(current_dir, ".git"))
             return current_dir
         end
         current_dir = dirname(current_dir)
