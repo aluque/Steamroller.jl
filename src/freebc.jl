@@ -84,13 +84,14 @@ function setfreebc!(fr::FreeBC, pbc, strfields::StreamerFields, strconf::Streame
         end
     end
 
-    freebc!(q1, uh, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, conn, fr)
+    freebc!(q1, uh, h, h^2 * convert(T, co.elementary_charge / co.epsilon_0), tree, conn, fr,
+            poisson_ghost_interp)
 end
 
 setfreebc!(::Nothing, pbc, strfields, strconf, tree, conn) = pbc
 
 function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, s, 
-                 tree, conn, conf::FreeBC{D}) where {D, M, G}
+                 tree, conn, conf::FreeBC{D}, ghost=InterpLinear()) where {D, M, G}
     @assert D == 2 "Free boundary conditions only support D=2 at the moment"
     (;geom, H, R, level, u1, am, b, f, rodft01, rodft10) = conf
 
@@ -112,7 +113,7 @@ function freebc!(q::ScalarBlockField{D, M, G}, u::ScalarBlockField{D, M, G}, h, 
     mul!(am, rodft01, am)
     @. b = am * h / 2^(level - 1) / 2
 
-    setouter!(q, b, tree, conn, dim, level, s, geom)
+    setouter!(q, b, tree, conn, dim, level, s, geom, ghost)
 end
 
 
@@ -149,10 +150,23 @@ end
 
 
 """
+Weights with which the coarse ghost cell beyond the outer boundary enters the interpolation of
+the two fine ghost cells closest to that boundary (outermost, next to outermost), for each
+interpolation method used to fill refinement-boundary ghosts of the potential.
+"""
+_wallweights(::InterpLinear, ::Val{D}, ::Type{T}) where {D, T} = (__w1(Val(D), T), zero(T))
+_wallweights(::InterpPseudoQuadratic, ::Val{D}, ::Type{T}) where {D, T} = (T(1 / 8), -T(1 / 8))
+_wallweights(::InterpCopy, ::Val{D}, ::Type{T}) where {D, T} = (zero(T), zero(T))
+_wallweights(m, ::Val{D}, ::Type{T}) where {D, T} =
+    throw(ArgumentError("Free b.c. do not support poisson_ghost_interp = $m"))
+
+"""
 Set the outer values of the charge `q` in order to satisfy the inhomogeneous boundary
 conditions given by `b`.
 """
-function setouter!(q::ScalarBlockField{D, M, G, T}, b, tree, conn, dim, level, s, geom) where {D, M, G, T}
+function setouter!(q::ScalarBlockField{D, M, G, T}, b, tree, conn, dim, level, s, geom,
+                   ghost=InterpLinear()) where {D, M, G, T}
+    (wout, win) = _wallweights(ghost, Val(D), T)
     otherdim = mod1(dim + 1, D)
 
     δ = CartesianIndex(ntuple(d -> d == dim ? 1 : 0, Val(D)))
@@ -196,6 +210,9 @@ function setouter!(q::ScalarBlockField{D, M, G, T}, b, tree, conn, dim, level, s
             # +1 if fine is below coarse, -1 if fine is above coarse
             dir = rlink.face[otherdim]
 
+            # Only refinement boundaries perpendicular to the outer boundary.
+            (dir != 0 && rlink.face[dim] == 0) || continue
+
             # index in the block that we will affect
             i = dir == -1 ? G + 1 : M + G
             I = CartesianIndex(ntuple(d -> d == dim ? G + M : i, Val(D)))
@@ -209,11 +226,12 @@ function setouter!(q::ScalarBlockField{D, M, G, T}, b, tree, conn, dim, level, s
             if dir == 1
                 bmean = sum(@view b[p * j + 1 : p * (j + 2)]) / (2p)
             else
-                bmean = sum(@view b[p * (j - 3) : p * (j - 1) - 1]) / (2p)
+                bmean = sum(@view b[p * (j - 3) + 1 : p * (j - 1)]) / (2p)
             end
             
-            # __w1 is the interpolation weight defined in interp.jl.
-            q[I, iblk] += 2 * __w1(Val(D), T) * factor(geom, J1, δ, T) * bmean / sl
+            # The ghost enters the laplacian along `otherdim`, with coefficient 1.
+            q[I, iblk] += 2 * wout * bmean / sl
+            q[I - δ, iblk] += 2 * win * bmean / sl
         end        
     end
 end
