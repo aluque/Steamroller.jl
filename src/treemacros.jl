@@ -22,10 +22,10 @@ for the many short loops over blocks or edges of a level.
 const MINBATCH = 8
 
 """
-Equivalent to `Polyester.@batch minbatch=MINBATCH per=core`.
+Equivalent to `Polyester.@batch minbatch=MINBATCH per=thread`.
 """
 macro pbatch(ex)
-    esc(:(Polyester.@batch minbatch=$MINBATCH per=core $ex))
+    esc(:(Polyester.@batch minbatch=$MINBATCH per=thread $ex))
 end
 
 """
@@ -102,7 +102,7 @@ function deepfirst(vars, tree, body, parallel=true)
         end)
     
     if parallel
-        inner = macroexpand(@__MODULE__, :(Polyester.@batch(minbatch=$MINBATCH, per=core, $inner)))
+        inner = macroexpand(@__MODULE__, :(Polyester.@batch(minbatch=$MINBATCH, per=thread, $inner)))
     end
     
     outer = quote
@@ -123,7 +123,7 @@ function flat(vars, tree, body)
              ($symlevel, $symcoord, $symindex) = nth($tree, $i)
              $body
              end)
-    bloop = macroexpand(@__MODULE__, :(Polyester.@batch(minbatch=$MINBATCH, per=core, $loop)))
+    bloop = macroexpand(@__MODULE__, :(Polyester.@batch(minbatch=$MINBATCH, per=thread, $loop)))
     
     return bloop
 end
